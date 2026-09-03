@@ -3005,7 +3005,9 @@ async function startServer() {
 
       // J. Modelos da Linha do Tempo
       if (requestedCategories.includes('models')) {
-        store.models = [];
+        const photoHistorySlots = store.config?.photoHistorySlots || 15;
+        const defaultModel = getDefaultSingleLayoutModel(photoHistorySlots);
+        store.models = [defaultModel];
       }
 
       // Exclusão física das fotos identificadas no disco
