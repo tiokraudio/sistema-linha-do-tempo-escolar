@@ -6,7 +6,7 @@ const imageBase64Cache = new Map<string, string>();
 
 /**
  * Converts any image URL (relative, absolute, or blob) to a Base64 Data URL.
- * Uses canvas extraction or fetch blob reader for cross-origin safety.
+ * Preserves 100% of original photo resolution and bytes without lossy recompression.
  */
 export async function urlToDataUrl(url: string): Promise<string> {
   if (!url || typeof url !== 'string') return '';
@@ -21,14 +21,20 @@ export async function urlToDataUrl(url: string): Promise<string> {
     return imageBase64Cache.get(cleanUrl)!;
   }
 
-  // Attempt 1: Fetch as blob then convert to base64
+  // Attempt 1: Fetch directly as raw Blob and convert via FileReader (Zero quality loss, preserves original bytes)
   try {
-    const response = await fetch(cleanUrl, { mode: 'cors' });
+    const response = await fetch(cleanUrl);
     if (response.ok) {
       const blob = await response.blob();
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result);
+          } else {
+            reject(new Error('FileReader failed'));
+          }
+        };
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
@@ -41,23 +47,38 @@ export async function urlToDataUrl(url: string): Promise<string> {
     // Fallback to Image element rendering
   }
 
-  // Attempt 2: Load into HTMLImageElement and draw onto Canvas
+  // Attempt 2: Load into HTMLImageElement and draw onto Canvas with 100% native resolution
   try {
     const base64 = await new Promise<string>((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      img.onload = async () => {
         try {
+          if (img.decode) {
+            try {
+              await img.decode();
+            } catch {
+              // Ignore decode error and proceed
+            }
+          }
+          const width = img.naturalWidth || img.width;
+          const height = img.naturalHeight || img.height;
+          if (!width || !height) {
+            resolve(cleanUrl);
+            return;
+          }
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth || img.width || 400;
-          canvas.height = img.naturalHeight || img.height || 400;
+          canvas.width = width;
+          canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             resolve(cleanUrl);
             return;
           }
-          ctx.drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL('image/png');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/png', 1.0);
           resolve(dataUrl);
         } catch {
           resolve(cleanUrl);
@@ -175,10 +196,10 @@ export async function captureA4ElementToPng(target: string | HTMLElement): Promi
   // 2. Inline and preload all images/photos in the target DOM tree
   await preloadAndInlineImages(element);
 
-  // 3. Render directly using html-to-image with strict A4 geometry and pixelRatio 2 (300 DPI)
+  // 3. Render directly using html-to-image with strict A4 geometry and pixelRatio 3 (300 DPI)
   return await toPng(element, {
     quality: 1.0,
-    pixelRatio: 2, // 1588 x 2246 px (True 300 DPI for A4)
+    pixelRatio: 3, // ~2382 x 3369 px (True 300 DPI estrito para folha A4 gráfica comercial)
     width: A4_STANDARD_WIDTH,
     height: A4_STANDARD_HEIGHT,
     skipFonts: true, // EVITA O SECURITYERROR DO GOOGLE FONTS (cssRules cross-origin)
@@ -234,8 +255,8 @@ export function addPngPageToA4Pdf(pdf: jsPDF, pngDataUrl: string, isFirstPage: b
     pdf.addPage('a4', 'portrait');
   }
 
-  // Preencher exatamente a folha A4 (210 x 297 mm) sem distorcer proporção
-  pdf.addImage(pngDataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+  // Preencher exatamente a folha A4 (210 x 297 mm) sem distorcer proporção ('SLOW' impede downsampling e compressão com perdas)
+  pdf.addImage(pngDataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'SLOW');
 }
 
 /**

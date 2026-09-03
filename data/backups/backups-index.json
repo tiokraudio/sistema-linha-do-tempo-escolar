@@ -1,5 +1,81 @@
 [
   {
+    "id": "bck_1788436324801_m9n9s",
+    "filename": "backup_linhadotempo_2026-09-03_11-52-02_manual.zip",
+    "createdAt": "2026-09-03T11:52:02.993Z",
+    "backupType": "manual",
+    "reason": "Teste de Fotos em Disco",
+    "sizeBytes": 14519047,
+    "systemVersion": "2.4.0",
+    "status": "valid",
+    "counts": {
+      "studentsCount": 1,
+      "recordsCount": 1,
+      "periodsCount": 1,
+      "timelinesCount": 0,
+      "photosCount": 1
+    },
+    "manifest": {
+      "backupVersion": "1.0",
+      "systemVersion": "2.4.0",
+      "createdAt": "2026-09-03T11:52:02.993Z",
+      "backupType": "manual",
+      "reason": "Teste de Fotos em Disco",
+      "dataFormatVersion": "1.0",
+      "counts": {
+        "studentsCount": 1,
+        "recordsCount": 1,
+        "periodsCount": 1,
+        "timelinesCount": 0,
+        "modelsCount": 0,
+        "classesCount": 0,
+        "photosCount": 1,
+        "closedYearsCount": 0
+      },
+      "checksums": {
+        "storageSha256": "c81088fce59b4ff24f3f98b66fc2fe00ca882a6ddbcd720820aff1a28562178e"
+      }
+    }
+  },
+  {
+    "id": "bck_1788436321913_jjali",
+    "filename": "backup_linhadotempo_2026-09-03_11-52-00_manual.zip",
+    "createdAt": "2026-09-03T11:52:00.115Z",
+    "backupType": "manual",
+    "reason": "Teste UTF-8",
+    "sizeBytes": 14518273,
+    "systemVersion": "2.4.0",
+    "status": "valid",
+    "counts": {
+      "studentsCount": 1,
+      "recordsCount": 0,
+      "periodsCount": 1,
+      "timelinesCount": 0,
+      "photosCount": 0
+    },
+    "manifest": {
+      "backupVersion": "1.0",
+      "systemVersion": "2.4.0",
+      "createdAt": "2026-09-03T11:52:00.115Z",
+      "backupType": "manual",
+      "reason": "Teste UTF-8",
+      "dataFormatVersion": "1.0",
+      "counts": {
+        "studentsCount": 1,
+        "recordsCount": 0,
+        "periodsCount": 1,
+        "timelinesCount": 0,
+        "modelsCount": 0,
+        "classesCount": 1,
+        "photosCount": 0,
+        "closedYearsCount": 0
+      },
+      "checksums": {
+        "storageSha256": "d935a0c2ea60f41e1b34ea5ea89a60046bef203d35d9bd627db9ec6a4a2fb103"
+      }
+    }
+  },
+  {
     "id": "bck_1788379863247_9demw",
     "filename": "backup_linhadotempo_2026-09-02_20-11-03_manual.zip",
     "createdAt": "2026-09-02T20:11:03.225Z",
