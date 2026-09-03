@@ -16,6 +16,9 @@ interface CarometroA4SheetProps {
   scale?: number;
 }
 
+// Cache em memória para aceleração do Carômetro
+const carometroImageCache = new Map<string, HTMLImageElement>();
+
 const PhotoItemCanvas: React.FC<{
   photoUrl: string;
   crop: { x: number; y: number; zoom: number };
@@ -29,51 +32,89 @@ const PhotoItemCanvas: React.FC<{
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Local preview canvas size (proportional 3:4)
-    canvas.width = 216;
-    canvas.height = 288;
+    // Resolução de alta fidelidade para 300 DPI estrito no A4 impresso (proporção 3:4)
+    // 660 x 880 px garante definição fotográfica sem pixelização ou compressão
+    const targetW = 660;
+    const targetH = 880;
 
-    ctx.clearRect(0, 0, 216, 288);
+    canvas.width = targetW;
+    canvas.height = targetH;
+    canvas.dataset.status = 'loading';
+
+    ctx.clearRect(0, 0, targetW, targetH);
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, 216, 288);
+    ctx.fillRect(0, 0, targetW, targetH);
 
     if (!photoUrl) {
       // Draw placeholder
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '14px sans-serif';
+      ctx.font = 'bold 36px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Sem foto', 108, 144);
+      ctx.fillText('Sem foto', targetW / 2, targetH / 2);
+      canvas.dataset.status = 'ready';
       return;
     }
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    let isMounted = true;
+
+    const drawPhoto = (img: HTMLImageElement) => {
+      if (!isMounted) return;
       const imgW = img.naturalWidth || img.width;
       const imgH = img.naturalHeight || img.height;
-      if (!imgW || !imgH) return;
+      if (!imgW || !imgH) {
+        canvas.dataset.status = 'error';
+        return;
+      }
 
       const zoom = crop.zoom ?? 1.0;
       const cropX = crop.x ?? 50;
       const cropY = crop.y ?? 50;
 
-      const scale = Math.max(216 / imgW, 288 / imgH);
-      const srcW = 216 / (scale * zoom);
-      const srcH = 288 / (scale * zoom);
+      const scale = Math.max(targetW / imgW, targetH / imgH);
+      const srcW = targetW / (scale * zoom);
+      const srcH = targetH / (scale * zoom);
       const centerX = imgW * (cropX / 100);
       const centerY = imgH * (cropY / 100);
       const srcX = centerX - srcW / 2;
       const srcY = centerY - srcH / 2;
 
-      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, 216, 288);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
+      canvas.dataset.status = 'ready';
+    };
+
+    let img = carometroImageCache.get(photoUrl);
+    if (img && img.complete && (img.naturalWidth || img.width)) {
+      drawPhoto(img);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      carometroImageCache.set(photoUrl, img!);
+      drawPhoto(img!);
+    };
+    img.onerror = () => {
+      if (isMounted) {
+        canvas.dataset.status = 'error';
+      }
     };
     img.src = photoUrl;
+
+    return () => {
+      isMounted = false;
+    };
   }, [photoUrl, crop.x, crop.y, crop.zoom]);
 
   return (
     <canvas
       ref={canvasRef}
       data-src={photoUrl}
+      data-status="loading"
       data-crop-x={crop.x}
       data-crop-y={crop.y}
       data-crop-zoom={crop.zoom}

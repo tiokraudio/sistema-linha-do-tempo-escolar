@@ -36,6 +36,9 @@ interface CanvasPhotoProps {
   className?: string;
 }
 
+// Cache de elementos de imagem em memória para aceleração e reaproveitamento imediato
+const previewImageCache = new Map<string, HTMLImageElement>();
+
 export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
   src,
   cropSettings,
@@ -49,17 +52,36 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || !src) return;
 
+    canvas.dataset.status = 'loading';
     let isMounted = true;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
 
-    img.onload = () => {
+    const drawImageOnCanvas = (img: HTMLImageElement) => {
       if (!isMounted) return;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        canvas.dataset.status = 'error';
+        return;
+      }
 
-      const targetW = isPrimary ? 800 : 600;
-      const targetH = isPrimary ? 600 : 600;
+      const imgW = img.naturalWidth || img.width;
+      const imgH = img.naturalHeight || img.height;
+
+      if (!imgW || !imgH) {
+        canvas.dataset.status = 'error';
+        return;
+      }
+
+      // CALIBRAÇÃO PARA 300 DPI GRÁFICO (Folha A4: 2382 x 3369 px):
+      // - Foto principal: preserva a definição máxima original (mínimo 2400 x 1800 px, até 3840 px)
+      // - Fotos secundárias: 1200 x 1200 px (supersampling de alta fidelidade para círculos)
+      let targetW = isPrimary ? 2400 : 1200;
+      let targetH = isPrimary ? 1800 : 1200;
+
+      if (isPrimary && imgW > 0 && imgH > 0) {
+        const candidateW = Math.min(Math.max(imgW, 2400), 3840);
+        targetW = candidateW;
+        targetH = Math.round(candidateW * 0.75);
+      }
 
       canvas.width = targetW;
       canvas.height = targetH;
@@ -70,11 +92,6 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
       const zoom = cropSettings?.zoom ?? 1.0;
       const cropX = cropSettings?.x ?? 50;
       const cropY = cropSettings?.y ?? 50;
-
-      const imgW = img.naturalWidth || img.width;
-      const imgH = img.naturalHeight || img.height;
-
-      if (!imgW || !imgH) return;
 
       const scale = Math.max(targetW / imgW, targetH / imgH);
 
@@ -87,7 +104,35 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
       const srcX = centerX - srcW / 2;
       const srcY = centerY - srcH / 2;
 
+      // Habilitar interpolação bicúbica de máxima qualidade fotográfica
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
       ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
+      canvas.dataset.status = 'ready';
+    };
+
+    // Verificar se a imagem já foi instanciada e decodificada
+    let img = previewImageCache.get(src);
+    if (img && img.complete && (img.naturalWidth || img.width)) {
+      drawImageOnCanvas(img);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      previewImageCache.set(src, img!);
+      drawImageOnCanvas(img!);
+    };
+
+    img.onerror = () => {
+      if (isMounted) {
+        canvas.dataset.status = 'error';
+      }
     };
 
     img.src = src;
@@ -103,6 +148,7 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
       className={className}
       aria-label={alt}
       data-src={src}
+      data-status="loading"
       data-crop-x={cropSettings?.x ?? 50}
       data-crop-y={cropSettings?.y ?? 50}
       data-crop-zoom={cropSettings?.zoom ?? 1.0}

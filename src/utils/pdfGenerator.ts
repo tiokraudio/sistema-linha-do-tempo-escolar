@@ -170,13 +170,32 @@ export const A4_STANDARD_WIDTH = 794;
 export const A4_STANDARD_HEIGHT = 1123;
 
 /**
+ * Aguarda que todos os elementos <canvas> com data-src dentro do container
+ * tenham completado sua renderização (data-status === 'ready' ou 'error').
+ * Isso impede que snapshots sejam capturados com telas brancas ou fotos não renderizadas.
+ */
+export async function waitForAllCanvasesReady(container: HTMLElement, timeoutMs = 4500): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const canvases = Array.from(container.querySelectorAll<HTMLCanvasElement>('canvas[data-src]'));
+    if (canvases.length === 0) break;
+
+    const pending = canvases.filter((c) => c.dataset.status !== 'ready' && c.dataset.status !== 'error');
+    if (pending.length === 0) break;
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+}
+
+/**
  * Prepares and captures an HTMLElement or element by ID using html-to-image.
  *
  * Guarantees:
- * 1. Strict A4 dimensions (794 x 1123 px base, scale 2 = 1588 x 2246 px at 300 DPI).
+ * 1. Strict A4 dimensions (794 x 1123 px base, pixelRatio 3 = 2382 x 3369 px at 300 DPI).
  * 2. Unaltered snapshot: removes any preview scaling (transform: scale) during render.
  * 3. Inlines all images/photos as Base64 to prevent blank pages or missing assets.
  * 4. Full browser SVG ForeignObject support for all modern CSS color spaces.
+ * 5. Sincronização completa de todos os elementos <canvas> de alta resolução antes do snapshot.
  */
 export async function captureA4ElementToPng(target: string | HTMLElement): Promise<string> {
   const element = typeof target === 'string' ? document.getElementById(target) : target;
@@ -193,10 +212,16 @@ export async function captureA4ElementToPng(target: string | HTMLElement): Promi
     }
   }
 
-  // 2. Inline and preload all images/photos in the target DOM tree
+  // 2. Aguarda que todos os canvases de fotos em alta resolução completem a pintura
+  await waitForAllCanvasesReady(element);
+
+  // 3. Inline and preload all images/photos in the target DOM tree
   await preloadAndInlineImages(element);
 
-  // 3. Render directly using html-to-image with strict A4 geometry and pixelRatio 3 (300 DPI)
+  // 4. Pequena pausa para garantir flush do pipeline gráfico e decodificação completa
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  // 5. Render directly using html-to-image with strict A4 geometry and pixelRatio 3 (300 DPI)
   return await toPng(element, {
     quality: 1.0,
     pixelRatio: 3, // ~2382 x 3369 px (True 300 DPI estrito para folha A4 gráfica comercial)

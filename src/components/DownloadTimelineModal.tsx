@@ -607,15 +607,31 @@ export const DownloadTimelineModal: React.FC<DownloadTimelineModalProps> = ({
           <div
             style={{
               position: 'fixed',
-              top: '-9999px',
-              left: '-9999px',
-              width: '1123px',
-              height: '794px',
+              top: '-99999px',
+              left: '-99999px',
+              width: '794px',
+              height: '1123px',
               pointerEvents: 'none',
-              zIndex: -99,
+              zIndex: -9999,
+              overflow: 'hidden',
             }}
+            aria-hidden="true"
           >
-            <div id="download-timeline-offscreen-canvas" style={{ width: '1123px', height: '794px' }}>
+            <div
+              id="download-timeline-offscreen-canvas"
+              style={{
+                width: '794px',
+                height: '1123px',
+                minWidth: '794px',
+                minHeight: '1123px',
+                maxWidth: '794px',
+                maxHeight: '1123px',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+                position: 'relative',
+              }}
+            >
               <A4TimelinePreview
                 studentName={activeRenderingItem.student.name}
                 studentEnrollment={activeRenderingItem.student.enrollment}
