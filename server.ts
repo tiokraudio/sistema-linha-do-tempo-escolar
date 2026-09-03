@@ -70,7 +70,7 @@ function loadData(): LocalStorageData {
 
   // CASO A: PRIMEIRA INSTALAÇÃO (storage.json não existe fisicamente no disco)
   if (!dataFileExists) {
-    const photoHistorySlots = 10;
+    const photoHistorySlots = 15;
     const defaultModel = getDefaultSingleLayoutModel(photoHistorySlots);
     const initialPeriods: AcademicPeriod[] = ['2026', '2025', '2024', '2023'].map((yrStr) => ({
       id: `per_${yrStr}`,
@@ -116,7 +116,7 @@ function loadData(): LocalStorageData {
   } catch (err: any) {
     console.error('[Storage Error] Falha de I/O ao ler o arquivo storage.json existente:', err?.message || err);
     return {
-      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 10 },
+      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 15 },
       periods: [],
       classes: [],
       students: [],
@@ -132,7 +132,7 @@ function loadData(): LocalStorageData {
       '[Storage Error] O arquivo storage.json existe fisicamente no disco, mas está vazio (0 bytes). Nenhum dado foi sobrescrito e nenhum backup foi restaurado automaticamente. O sistema operará em modo seguro até intervenção ou restauração explícita.'
     );
     return {
-      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 10 },
+      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 15 },
       periods: [],
       classes: [],
       students: [],
@@ -156,7 +156,7 @@ function loadData(): LocalStorageData {
       `[Storage Error] O arquivo storage.json existe mas está corrompido ou contém formato JSON inválido: ${err?.message || err}. O arquivo físico em disco foi preservado intacto e NÃO foi sobrescrito. Nenhum backup foi restaurado automaticamente.`
     );
     return {
-      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 10 },
+      config: { schoolName: '', schoolLogo: '', photoHistorySlots: 15 },
       periods: [],
       classes: [],
       students: [],
@@ -172,7 +172,7 @@ function loadData(): LocalStorageData {
   const photoHistorySlots =
     typeof loadedData.config?.photoHistorySlots === 'number' && loadedData.config.photoHistorySlots >= 0
       ? loadedData.config.photoHistorySlots
-      : 10;
+      : 15;
 
   const defaultModelRef = getDefaultSingleLayoutModel(photoHistorySlots);
 
@@ -551,7 +551,7 @@ async function startServer() {
     res.json({
       schoolName: store.config?.schoolName || '',
       schoolLogo: store.config?.schoolLogo || '',
-      photoHistorySlots: store.config?.photoHistorySlots ?? 10,
+      photoHistorySlots: store.config?.photoHistorySlots ?? 15,
     });
   });
 
@@ -2647,7 +2647,7 @@ async function startServer() {
       const photoHistorySlots =
         typeof rawStore.config?.photoHistorySlots === 'number' && rawStore.config.photoHistorySlots >= 0
           ? rawStore.config.photoHistorySlots
-          : 10;
+          : 15;
 
       const restoredPeriods = Array.isArray(rawStore.periods)
         ? rawStore.periods.map((p) => ({
@@ -2999,7 +2999,7 @@ async function startServer() {
         store.config = {
           schoolName: '',
           schoolLogo: '',
-          photoHistorySlots: store.config?.photoHistorySlots || 10,
+          photoHistorySlots: store.config?.photoHistorySlots || 15,
         };
       }
 

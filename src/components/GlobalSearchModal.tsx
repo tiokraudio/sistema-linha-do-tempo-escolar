@@ -130,7 +130,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const maxSlots = schoolConfig.photoHistorySlots ?? 10;
+  const maxSlots = schoolConfig.photoHistorySlots ?? 15;
 
   // Build canonical dataset using existing buildWorkQueueData logic
   const allSearchableItems: SearchStudentItem[] = useMemo(() => {

@@ -88,7 +88,7 @@ export function sortRecordsChronologically(records: AcademicYearRecord[]): Acade
 export function getStudentHistoricalTrajectory(
   studentId: string,
   records: AcademicYearRecord[],
-  photoHistorySlots: number = 10,
+  photoHistorySlots: number = 15,
   activePeriodYear?: string | null,
   periods?: AcademicPeriod[],
   personType?: PersonType | string

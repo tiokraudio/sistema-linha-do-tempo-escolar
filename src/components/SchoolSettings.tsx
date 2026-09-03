@@ -18,7 +18,7 @@ export const SchoolSettings: React.FC<SchoolSettingsProps> = ({
   const [initialSnapshot, setInitialSnapshot] = useState(() => ({
     schoolName: config.schoolName || '',
     schoolLogo: config.schoolLogo || '',
-    photoHistorySlots: config.photoHistorySlots ?? 10,
+    photoHistorySlots: config.photoHistorySlots ?? 15,
   }));
 
   const [schoolName, setSchoolName] = useState(initialSnapshot.schoolName);
@@ -35,7 +35,7 @@ export const SchoolSettings: React.FC<SchoolSettingsProps> = ({
     const snap = {
       schoolName: config.schoolName || '',
       schoolLogo: config.schoolLogo || '',
-      photoHistorySlots: config.photoHistorySlots ?? 10,
+      photoHistorySlots: config.photoHistorySlots ?? 15,
     };
     setInitialSnapshot(snap);
     setSchoolName(snap.schoolName);
@@ -68,7 +68,7 @@ export const SchoolSettings: React.FC<SchoolSettingsProps> = ({
     setSuccessMsg('');
 
     try {
-      const slots = isNaN(photoHistorySlots) ? 10 : Math.max(0, Math.floor(photoHistorySlots));
+      const slots = isNaN(photoHistorySlots) ? 15 : Math.max(0, Math.floor(photoHistorySlots));
       const savedConfig = {
         schoolName: schoolName.trim(),
         schoolLogo,

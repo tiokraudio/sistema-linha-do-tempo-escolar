@@ -5,82 +5,165 @@ export function createDefaultDotsForConfig(configIndex: number): DotPosition[] {
 
   const dotWidth = 17;
   const dotHeight = 12;
-  const defaultY = 68;
 
-  // Prescribed positions for specific compositions 1 to 10 with calibrated balance
-  const presetCompositions: Record<number, Array<{ x: number; y: number }>> = {
-    1: [{ x: 41.5, y: 68 }],
+  interface PresetDot {
+    x: number;
+    y: number;
+    labelX: number;
+    labelY: number;
+  }
+
+  // Matriz Oficial de Coordenadas Secundárias (0 a 15)
+  const presetCompositions: Record<number, PresetDot[]> = {
+    1: [
+      { x: 41.5, y: 64, labelX: 41.5, labelY: 76.5 },
+    ],
     2: [
-      { x: 30.5, y: 68 },
-      { x: 52.5, y: 68 },
+      { x: 31.5, y: 64, labelX: 31.5, labelY: 76.5 },
+      { x: 51.5, y: 64, labelX: 51.5, labelY: 76.5 },
     ],
     3: [
-      { x: 21.0, y: 68 },
-      { x: 41.5, y: 68 },
-      { x: 62.0, y: 68 },
+      { x: 21.5, y: 64, labelX: 21.5, labelY: 76.5 },
+      { x: 41.5, y: 64, labelX: 41.5, labelY: 76.5 },
+      { x: 61.5, y: 64, labelX: 61.5, labelY: 76.5 },
     ],
     4: [
-      { x: 11.5, y: 68 },
-      { x: 31.5, y: 68 },
-      { x: 51.5, y: 68 },
-      { x: 71.5, y: 68 },
+      { x: 11.5, y: 64, labelX: 11.5, labelY: 76.5 },
+      { x: 31.5, y: 64, labelX: 31.5, labelY: 76.5 },
+      { x: 51.5, y: 64, labelX: 51.5, labelY: 76.5 },
+      { x: 71.5, y: 64, labelX: 71.5, labelY: 76.5 },
     ],
     5: [
-      { x: 3.5, y: 68 },
-      { x: 22.5, y: 68 },
-      { x: 41.5, y: 68 },
-      { x: 60.5, y: 68 },
-      { x: 79.5, y: 68 },
+      { x: 1.5, y: 64, labelX: 1.5, labelY: 76.5 },
+      { x: 21.5, y: 64, labelX: 21.5, labelY: 76.5 },
+      { x: 41.5, y: 64, labelX: 41.5, labelY: 76.5 },
+      { x: 61.5, y: 64, labelX: 61.5, labelY: 76.5 },
+      { x: 81.5, y: 64, labelX: 81.5, labelY: 76.5 },
     ],
     6: [
-      { x: 21.0, y: 61.5 },
-      { x: 41.5, y: 61.5 },
-      { x: 62.0, y: 61.5 },
-      { x: 21.0, y: 76.5 },
-      { x: 41.5, y: 76.5 },
-      { x: 62.0, y: 76.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
     ],
     7: [
-      { x: 11.5, y: 61.5 },
-      { x: 31.5, y: 61.5 },
-      { x: 51.5, y: 61.5 },
-      { x: 71.5, y: 61.5 },
-      { x: 21.0, y: 76.5 },
-      { x: 41.5, y: 76.5 },
-      { x: 62.0, y: 76.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 31.5, y: 71, labelX: 31.5, labelY: 83.5 },
+      { x: 51.5, y: 71, labelX: 51.5, labelY: 83.5 },
     ],
     8: [
-      { x: 11.5, y: 61.5 },
-      { x: 31.5, y: 61.5 },
-      { x: 51.5, y: 61.5 },
-      { x: 71.5, y: 61.5 },
-      { x: 11.5, y: 76.5 },
-      { x: 31.5, y: 76.5 },
-      { x: 51.5, y: 76.5 },
-      { x: 71.5, y: 76.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 21.5, y: 71, labelX: 21.5, labelY: 83.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
+      { x: 61.5, y: 71, labelX: 61.5, labelY: 83.5 },
     ],
     9: [
-      { x: 3.5, y: 61.5 },
-      { x: 22.5, y: 61.5 },
-      { x: 41.5, y: 61.5 },
-      { x: 60.5, y: 61.5 },
-      { x: 79.5, y: 61.5 },
-      { x: 11.5, y: 76.5 },
-      { x: 31.5, y: 76.5 },
-      { x: 51.5, y: 76.5 },
-      { x: 71.5, y: 76.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 11.5, y: 71, labelX: 11.5, labelY: 83.5 },
+      { x: 31.5, y: 71, labelX: 31.5, labelY: 83.5 },
+      { x: 51.5, y: 71, labelX: 51.5, labelY: 83.5 },
+      { x: 71.5, y: 71, labelX: 71.5, labelY: 83.5 },
     ],
     10: [
-      { x: 3.5, y: 61.5 },
-      { x: 22.5, y: 61.5 },
-      { x: 41.5, y: 61.5 },
-      { x: 60.5, y: 61.5 },
-      { x: 79.5, y: 61.5 },
-      { x: 3.5, y: 76.5 },
-      { x: 22.5, y: 76.5 },
-      { x: 41.5, y: 76.5 },
-      { x: 60.5, y: 76.5 },
-      { x: 79.5, y: 76.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 1.5, y: 71, labelX: 1.5, labelY: 83.5 },
+      { x: 21.5, y: 71, labelX: 21.5, labelY: 83.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
+      { x: 61.5, y: 71, labelX: 61.5, labelY: 83.5 },
+      { x: 81.5, y: 71, labelX: 81.5, labelY: 83.5 },
+    ],
+    11: [
+      { x: 1.5, y: 41, labelX: 1.5, labelY: 53.5 },
+      { x: 21.5, y: 41, labelX: 21.5, labelY: 53.5 },
+      { x: 41.5, y: 41, labelX: 41.5, labelY: 53.5 },
+      { x: 61.5, y: 41, labelX: 61.5, labelY: 53.5 },
+      { x: 81.5, y: 41, labelX: 81.5, labelY: 53.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
+    ],
+    12: [
+      { x: 1.5, y: 41, labelX: 1.5, labelY: 53.5 },
+      { x: 21.5, y: 41, labelX: 21.5, labelY: 53.5 },
+      { x: 41.5, y: 41, labelX: 41.5, labelY: 53.5 },
+      { x: 61.5, y: 41, labelX: 61.5, labelY: 53.5 },
+      { x: 81.5, y: 41, labelX: 81.5, labelY: 53.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 31.5, y: 71, labelX: 31.5, labelY: 83.5 },
+      { x: 51.5, y: 71, labelX: 51.5, labelY: 83.5 },
+    ],
+    13: [
+      { x: 1.5, y: 41, labelX: 1.5, labelY: 53.5 },
+      { x: 21.5, y: 41, labelX: 21.5, labelY: 53.5 },
+      { x: 41.5, y: 41, labelX: 41.5, labelY: 53.5 },
+      { x: 61.5, y: 41, labelX: 61.5, labelY: 53.5 },
+      { x: 81.5, y: 41, labelX: 81.5, labelY: 53.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 21.5, y: 71, labelX: 21.5, labelY: 83.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
+      { x: 61.5, y: 71, labelX: 61.5, labelY: 83.5 },
+    ],
+    14: [
+      { x: 1.5, y: 41, labelX: 1.5, labelY: 53.5 },
+      { x: 21.5, y: 41, labelX: 21.5, labelY: 53.5 },
+      { x: 41.5, y: 41, labelX: 41.5, labelY: 53.5 },
+      { x: 61.5, y: 41, labelX: 61.5, labelY: 53.5 },
+      { x: 81.5, y: 41, labelX: 81.5, labelY: 53.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 11.5, y: 71, labelX: 11.5, labelY: 83.5 },
+      { x: 31.5, y: 71, labelX: 31.5, labelY: 83.5 },
+      { x: 51.5, y: 71, labelX: 51.5, labelY: 83.5 },
+      { x: 71.5, y: 71, labelX: 71.5, labelY: 83.5 },
+    ],
+    15: [
+      { x: 1.5, y: 41, labelX: 1.5, labelY: 53.5 },
+      { x: 21.5, y: 41, labelX: 21.5, labelY: 53.5 },
+      { x: 41.5, y: 41, labelX: 41.5, labelY: 53.5 },
+      { x: 61.5, y: 41, labelX: 61.5, labelY: 53.5 },
+      { x: 81.5, y: 41, labelX: 81.5, labelY: 53.5 },
+      { x: 1.5, y: 56, labelX: 1.5, labelY: 68.5 },
+      { x: 21.5, y: 56, labelX: 21.5, labelY: 68.5 },
+      { x: 41.5, y: 56, labelX: 41.5, labelY: 68.5 },
+      { x: 61.5, y: 56, labelX: 61.5, labelY: 68.5 },
+      { x: 81.5, y: 56, labelX: 81.5, labelY: 68.5 },
+      { x: 1.5, y: 71, labelX: 1.5, labelY: 83.5 },
+      { x: 21.5, y: 71, labelX: 21.5, labelY: 83.5 },
+      { x: 41.5, y: 71, labelX: 41.5, labelY: 83.5 },
+      { x: 61.5, y: 71, labelX: 61.5, labelY: 83.5 },
+      { x: 81.5, y: 71, labelX: 81.5, labelY: 83.5 },
     ],
   };
 
@@ -89,36 +172,50 @@ export function createDefaultDotsForConfig(configIndex: number): DotPosition[] {
 
   const preset = presetCompositions[count];
 
-  for (let i = 0; i < count; i++) {
-    let pos: { x: number; y: number };
-    if (preset && preset[i]) {
-      pos = preset[i];
-    } else if (count <= 5) {
-      const step = 20;
-      const startX = 50 - ((count - 1) * step) / 2 - dotWidth / 2;
-      pos = { x: Math.max(2, startX + i * step), y: defaultY };
-    } else {
-      // 2 rows layout for count > 5
-      const row = Math.floor(i / 5);
-      const col = i % 5;
-      const rowCount = row === 0 ? Math.min(5, count) : count - 5;
-      const step = 19;
-      const startX = 50 - ((rowCount - 1) * step) / 2 - dotWidth / 2;
-      const y = row === 0 ? 62 : 76;
-      pos = { x: Math.max(2, startX + col * step), y };
+  if (preset) {
+    for (let i = 0; i < count; i++) {
+      const pt = preset[i];
+      if (!pt) continue;
+      dots.push({
+        xPercent: pt.x,
+        yPercent: pt.y,
+        widthPercent: dotWidth,
+        heightPercent: dotHeight,
+        yearLabel: {
+          xPercent: pt.labelX,
+          yPercent: pt.labelY,
+          verticalPosition: 'inferior',
+          align: 'center',
+          fontSizePx: 11,
+          color: '#ffffff',
+          bgColor: '#1e293b',
+        },
+      });
     }
+    return dots;
+  }
+
+  // Fallback para contagem > 15
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / 5);
+    const col = i % 5;
+    const rowCount = row === 0 ? Math.min(5, count) : count - row * 5;
+    const step = 20;
+    const startX = 50 - ((Math.min(rowCount, 5) - 1) * step) / 2 - dotWidth / 2;
+    const x = Math.max(1.5, startX + col * step);
+    const y = 41 + row * 15;
 
     dots.push({
-      xPercent: pos.x,
-      yPercent: pos.y,
+      xPercent: x,
+      yPercent: y,
       widthPercent: dotWidth,
       heightPercent: dotHeight,
       yearLabel: {
-        xPercent: pos.x,
-        yPercent: pos.y + dotHeight + 1,
+        xPercent: x,
+        yPercent: y + dotHeight + 0.5,
         verticalPosition: 'inferior',
         align: 'center',
-        fontSizePx: 12,
+        fontSizePx: 11,
         color: '#ffffff',
         bgColor: '#1e293b',
       },
@@ -130,7 +227,7 @@ export function createDefaultDotsForConfig(configIndex: number): DotPosition[] {
 
 export function ensureModelConfigurations(
   existingConfigs: CompositionConfig[] = [],
-  totalSlots: number = 10
+  totalSlots: number = 15
 ): CompositionConfig[] {
   const existingMap = new Map<number, CompositionConfig>();
   existingConfigs.forEach((c) => {
@@ -157,7 +254,7 @@ export function ensureModelConfigurations(
   return result.sort((a, b) => a.configIndex - b.configIndex);
 }
 
-export function getDefaultSingleLayoutModel(slotsCount: number = 10): LayoutModel {
+export function getDefaultSingleLayoutModel(slotsCount: number = 15): LayoutModel {
   const configurations: CompositionConfig[] = [];
   const maxSlots = Math.max(slotsCount, 0);
   for (let i = 0; i <= maxSlots; i++) {
@@ -232,7 +329,7 @@ export function getDefaultSingleLayoutModel(slotsCount: number = 10): LayoutMode
     secondaryYearConfig: {
       verticalPosition: 'inferior',
       align: 'center',
-      fontSizePx: 12,
+      fontSizePx: 11,
       color: '#ffffff',
       bgColor: '#1e293b',
       show: true,
@@ -261,7 +358,7 @@ export function getDefaultSingleLayoutModel(slotsCount: number = 10): LayoutMode
   };
 }
 
-export function migrateDefaultLayoutModel(model: LayoutModel, slotsCount: number = 10): LayoutModel {
+export function migrateDefaultLayoutModel(model: LayoutModel, slotsCount: number = 15): LayoutModel {
   const maxSlots = Math.max(slotsCount, 0);
   const configurations: CompositionConfig[] = [];
   for (let i = 0; i <= maxSlots; i++) {
@@ -323,7 +420,7 @@ export function migrateDefaultLayoutModel(model: LayoutModel, slotsCount: number
     secondaryYearConfig: {
       verticalPosition: 'inferior',
       align: 'center',
-      fontSizePx: 12,
+      fontSizePx: 11,
       color: '#ffffff',
       bgColor: '#1e293b',
       show: true,

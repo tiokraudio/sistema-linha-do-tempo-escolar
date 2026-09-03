@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { LayoutModel, SchoolConfig, DotPosition, TextElementPosition, PersonType, getModelBackgroundUrl } from '../types';
 import { getDefaultSingleLayoutModel, ensureModelConfigurations, createDefaultDotsForConfig } from '../utils/defaultLayout';
 import { VisualReferenceGrid } from './VisualReferenceGrid';
@@ -37,7 +37,7 @@ import {
 interface LayoutEditorProps {
   model?: LayoutModel | null;
   schoolConfig: SchoolConfig;
-  onSaveModel: (model: LayoutModel) => Promise<LayoutModel>;
+  onSaveModel: (model: LayoutModel) => Promise<LayoutModel | void>;
 }
 
 export type ElementId =
@@ -51,12 +51,18 @@ export type ElementId =
   | 'secondaryYear'
   | string;
 
+const compactInputClasses =
+  'w-full h-8 px-2.5 py-1 bg-white border border-slate-300 rounded-md text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed';
+
+const compactSelectClasses =
+  'w-full h-8 px-2.5 py-1 bg-white border border-slate-300 rounded-md text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed';
+
 export const LayoutEditor: React.FC<LayoutEditorProps> = ({
   model,
   schoolConfig,
   onSaveModel,
 }) => {
-  const slotsCount = schoolConfig.photoHistorySlots ?? 10;
+  const slotsCount = schoolConfig.photoHistorySlots ?? 15;
 
   function ensureConfigs(m: LayoutModel): LayoutModel {
     const configs = ensureModelConfigurations(m.configurations || [], slotsCount);
@@ -67,6 +73,16 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
     if (!model || !model.id) return null;
     return ensureConfigs(model);
   });
+
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() => {
+    if (!model || !model.id) return '';
+    return JSON.stringify(ensureConfigs(model));
+  });
+
+  const isDirty = useMemo(() => {
+    if (!formData) return false;
+    return JSON.stringify(formData) !== savedSnapshot;
+  }, [formData, savedSnapshot]);
 
   const [activeConfigIndex, setActiveConfigIndex] = useState<number>(1);
   const [selectedElementId, setSelectedElementId] = useState<ElementId>('studentName');
@@ -92,11 +108,17 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
   const fontScale = canvasWidth / 794;
 
+  const lastModelRef = useRef(model);
   useEffect(() => {
     if (model && model.id) {
-      setFormData(ensureConfigs(model));
+      if (!isDirty || lastModelRef.current?.id !== model.id) {
+        const normalized = ensureConfigs(model);
+        setFormData(normalized);
+        setSavedSnapshot(JSON.stringify(normalized));
+      }
+      lastModelRef.current = model;
     }
-  }, [model, schoolConfig.photoHistorySlots]);
+  }, [model, schoolConfig.photoHistorySlots, isDirty]);
 
   const handleUpdateAllSecondaryDotsSize = (newWidthPercent: number) => {
     if (!formData) return;
@@ -122,20 +144,20 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
   if (!formData) {
     return (
-      <div className="bg-white rounded-xl p-8 text-center border border-slate-200 shadow-2xs max-w-xl mx-auto space-y-4 my-8">
-        <div className="w-12 h-12 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-center mx-auto text-blue-600">
-          <Palette className="w-6 h-6" />
+      <div className="bg-white rounded-lg p-6 text-center border border-slate-200 shadow-2xs max-w-md mx-auto space-y-3 my-4">
+        <div className="w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-center mx-auto text-blue-600">
+          <Palette className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight">
-            Nenhum Modelo de Layout configurado
+          <h2 className="text-sm font-bold text-slate-800">
+            Nenhum Modelo de Layout
           </h2>
-          <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto leading-relaxed">
-            Não existe um gabarito visual ativo. Crie o Modelo de Layout para estruturar a impressão A4 com as composições de fotos (0 a {slotsCount} fotos secundárias).
+          <p className="text-slate-500 text-xs mt-1">
+            Crie o modelo para estruturar as composições de fotos (0 a {slotsCount} slots).
           </p>
         </div>
-        <Button variant="primary" icon={Sparkles} onClick={handleCreateNewModel}>
-          Criar Modelo de Layout
+        <Button size="sm" variant="primary" icon={Sparkles} onClick={handleCreateNewModel}>
+          Criar Modelo
         </Button>
       </div>
     );
@@ -255,9 +277,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
     };
 
     return (
-      <div className="space-y-2.5 pt-3 border-t border-slate-100 mt-2">
+      <div className="space-y-1.5 pt-2 border-t border-slate-100 mt-2">
         {/* Microajuste de Posição (0.5%) */}
-        <div className="space-y-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+        <div className="space-y-1 bg-slate-50 p-2 rounded-md border border-slate-200">
           <div className="flex items-center justify-between">
             <label className="text-[11px] font-semibold text-slate-600 block">
               Microajuste (±0,5%)
@@ -268,7 +290,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
           </div>
 
           <div className="flex justify-center items-center pt-0.5">
-            <div className="grid grid-cols-3 gap-1 w-28">
+            <div className="grid grid-cols-3 gap-1 w-24">
               <div></div>
               <button
                 type="button"
@@ -276,7 +298,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 className="p-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded border border-slate-200 flex items-center justify-center transition-colors cursor-pointer active:scale-95 shadow-2xs"
                 title="Cima (Y - 0,5%)"
               >
-                <ArrowUp className="w-3.5 h-3.5" />
+                <ArrowUp className="w-3 h-3" />
               </button>
               <div></div>
 
@@ -286,11 +308,11 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 className="p-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded border border-slate-200 flex items-center justify-center transition-colors cursor-pointer active:scale-95 shadow-2xs"
                 title="Esquerda (X - 0,5%)"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3 h-3" />
               </button>
 
               <div className="flex items-center justify-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
               </div>
 
               <button
@@ -299,7 +321,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 className="p-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded border border-slate-200 flex items-center justify-center transition-colors cursor-pointer active:scale-95 shadow-2xs"
                 title="Direita (X + 0,5%)"
               >
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="w-3 h-3" />
               </button>
 
               <div></div>
@@ -309,7 +331,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 className="p-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded border border-slate-200 flex items-center justify-center transition-colors cursor-pointer active:scale-95 shadow-2xs"
                 title="Baixo (Y + 0,5%)"
               >
-                <ArrowDown className="w-3.5 h-3.5" />
+                <ArrowDown className="w-3 h-3" />
               </button>
               <div></div>
             </div>
@@ -505,13 +527,16 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
   };
 
   const handleSave = async () => {
+    if (!formData || !isDirty || isSaving) return;
     setErrorMsg('');
     setSuccessMsg('');
     setIsSaving(true);
 
     try {
       const updated = await onSaveModel(formData);
-      setFormData(ensureConfigs(updated));
+      const normalized = ensureConfigs((updated as LayoutModel) || formData);
+      setFormData(normalized);
+      setSavedSnapshot(JSON.stringify(normalized));
       setSuccessMsg('Modelo salvo com sucesso.');
     } catch (e: any) {
       setErrorMsg(e.message || 'Erro ao salvar o modelo.');
@@ -580,32 +605,47 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Page Header */}
-      <PageHeader
-        title="Modelo da Linha do Tempo"
-        subtitle="Configure a aparência da linha do tempo."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant={showGrid ? 'secondary' : 'ghost'}
-              icon={LayoutGrid}
-              onClick={() => setShowGrid(!showGrid)}
-              className={showGrid ? 'border-blue-300 text-blue-700 bg-blue-50/80 hover:bg-blue-100' : 'text-slate-600'}
-            >
-              Grade {showGrid ? 'ON' : 'OFF'}
-            </Button>
-            <Button
-              variant="primary"
-              icon={Save}
-              loading={isSaving}
-              onClick={handleSave}
-            >
-              Salvar modelo
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-3">
+      {/* Barra de Ferramentas Compacta do Modelo */}
+      <div className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <Palette className="w-4 h-4 text-blue-600 shrink-0" />
+          <span className="text-xs font-bold text-slate-800">
+            Modelo da Linha do Tempo
+          </span>
+          <span className="text-slate-300">|</span>
+          <span className="text-[11px] text-slate-500 font-medium truncate">
+            {formData.title || 'Padrão'}
+          </span>
+          {isDirty && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              Alterações não salvas
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={showGrid ? 'secondary' : 'ghost'}
+            icon={LayoutGrid}
+            onClick={() => setShowGrid(!showGrid)}
+            className={`h-8 text-xs ${showGrid ? 'border-blue-300 text-blue-700 bg-blue-50/80 hover:bg-blue-100' : 'text-slate-600'}`}
+          >
+            Grade {showGrid ? 'ON' : 'OFF'}
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={Save}
+            loading={isSaving}
+            disabled={!isDirty || isSaving}
+            onClick={handleSave}
+            className="h-8 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Salvar Modelo
+          </Button>
+        </div>
+      </div>
 
       {/* Toast Notification */}
       {successMsg && (
@@ -620,15 +660,15 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
       )}
 
       {/* 3-COLUMN WORKSPACE: ELEMENTOS → PRÉVIA A4 → PROPRIEDADES */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         
         {/* COLUMN 1 (3 cols): ELEMENTOS & COMPOSIÇÕES */}
-        <div className="lg:col-span-3 space-y-3">
+        <div className="lg:col-span-3 space-y-2.5">
           
           {/* Element Selector */}
-          <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs space-y-2.5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+          <div className="bg-white rounded-lg p-3 border border-slate-200 shadow-2xs space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-blue-600" />
                 <span>Elementos</span>
               </span>
@@ -648,7 +688,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         setSelectedElementId(item.id);
                       }
                     }}
-                    className={`w-full px-2.5 py-2 rounded-lg text-left text-xs font-medium transition-colors cursor-pointer flex items-center justify-between border ${
+                    className={`w-full px-2.5 py-1.5 rounded-md text-left text-xs font-medium transition-colors cursor-pointer flex items-center justify-between border ${
                       item.active
                         ? 'bg-blue-50 text-blue-800 border-blue-200 font-semibold shadow-2xs'
                         : 'bg-white text-slate-700 border-transparent hover:bg-slate-50'
@@ -676,9 +716,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
           </div>
 
           {/* Composição de Fotos */}
-          <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs space-y-2.5">
+          <div className="bg-white rounded-lg p-3 border border-slate-200 shadow-2xs space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
                 Composição
               </span>
               <span className="text-[11px] font-medium text-blue-600">
@@ -694,7 +734,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     key={`cfg_btn_${cfgIdx}`}
                     type="button"
                     onClick={() => setActiveConfigIndex(cfgIdx)}
-                    className={`min-w-[28px] h-7 px-1.5 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center ${
+                    className={`min-w-[26px] h-6 px-1 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center ${
                       isActive
                         ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -712,7 +752,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 type="button"
                 onClick={handleCopyConfigToNext}
                 disabled={!hasNextConfig}
-                className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 transition-colors ${
+                className={`w-full py-1.5 px-2 rounded-md text-xs font-medium border flex items-center justify-center gap-1.5 transition-colors ${
                   hasNextConfig
                     ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300 cursor-pointer shadow-2xs'
                     : 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
@@ -732,10 +772,10 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
         </div>
 
         {/* COLUMN 2 (5 cols on lg, 6 cols on xl): PRÉVIA A4 (CENTRALIZADA E PERSISTENTE) */}
-        <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-4 z-10 self-start space-y-2.5">
-          <div className="bg-slate-900 rounded-xl p-3.5 sm:p-4 shadow-sm border border-slate-800 text-white space-y-2.5 flex flex-col items-center">
+        <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-3 z-10 self-start space-y-2">
+          <div className="bg-slate-900 rounded-lg p-3 shadow-sm border border-slate-800 text-white space-y-2 flex flex-col items-center">
             {/* Top Status */}
-            <div className="w-full flex items-center justify-between pb-2 border-b border-slate-800 text-xs gap-2">
+            <div className="w-full flex items-center justify-between pb-1.5 border-b border-slate-800 text-xs gap-2">
               <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-slate-300">Prévia A4</span>
                 <div className="flex items-center bg-slate-800 p-0.5 rounded border border-slate-700 ml-2">
@@ -1116,31 +1156,30 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
         </div>
 
         {/* COLUMN 3 (4 cols): PROPRIEDADES DO ELEMENTO SELECIONADO */}
-        <div className="lg:col-span-4 space-y-3">
-          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-3.5">
+        <div className="lg:col-span-4 space-y-2.5">
+          <div className="bg-white rounded-lg p-3 border border-slate-200 shadow-2xs space-y-2.5">
             
             {/* CONTEXT: BACKGROUND */}
             {selectedElementId === 'bg' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Background da Folha A4
                   </h4>
                 </div>
 
                 {/* 1. Background Principal / Alunos */}
-                <div className="space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                <div className="space-y-2 border border-slate-200 rounded-lg p-2.5 bg-slate-50/50">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
-                      Background Padrão (Alunos)
+                      Background Alunos
                     </span>
-                    <span className="text-[10px] text-slate-500 font-medium">Principal</span>
                   </div>
 
                   {formData.bgImageUrl ? (
                     <div className="space-y-2">
-                      <div className="relative w-full h-32 bg-slate-100 border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center p-1.5">
+                      <div className="relative w-full h-20 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
                           src={formData.bgImageUrl}
                           alt="Prévia do Background de Alunos"
@@ -1149,7 +1188,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="cursor-pointer flex-1">
-                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors">
+                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium px-2 py-1.5 rounded-md transition-colors">
                             <Upload className="w-3.5 h-3.5" />
                             <span>Substituir</span>
                           </span>
@@ -1164,7 +1203,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           variant="secondary"
                           size="sm"
                           onClick={() => setFormData({ ...formData, bgImageUrl: '' })}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 text-xs"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 text-xs h-8"
                         >
                           Remover
                         </Button>
@@ -1173,10 +1212,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   ) : (
                     <div>
                       <label className="cursor-pointer block">
-                        <div className="border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 text-center transition-all cursor-pointer group bg-white">
+                        <div className="border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 rounded-lg p-2.5 flex items-center justify-center gap-2 text-center transition-all cursor-pointer group bg-white">
                           <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
-                          <span className="text-xs font-semibold text-slate-700">Carregar imagem</span>
-                          <span className="text-[10px] text-slate-400">Proporção A4 (PNG/JPG)</span>
+                          <span className="text-xs font-semibold text-slate-700">Carregar imagem (A4)</span>
                         </div>
                         <input
                           type="file"
@@ -1190,21 +1228,17 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 </div>
 
                 {/* 2. Background Específico de Colaboradores */}
-                <div className="space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                <div className="space-y-2 border border-slate-200 rounded-lg p-2.5 bg-slate-50/50">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
                       Background Colaboradores
                     </span>
-                    <span className="text-[10px] text-slate-500 font-medium">Opcional</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">
-                    Se não for configurado, os colaboradores utilizarão automaticamente o Background Padrão.
-                  </p>
 
                   {formData.collaboratorBgImageUrl ? (
                     <div className="space-y-2">
-                      <div className="relative w-full h-32 bg-slate-100 border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center p-1.5">
+                      <div className="relative w-full h-20 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
                           src={formData.collaboratorBgImageUrl}
                           alt="Prévia do Background de Colaboradores"
@@ -1213,7 +1247,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="cursor-pointer flex-1">
-                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors">
+                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium px-2 py-1.5 rounded-md transition-colors">
                             <Upload className="w-3.5 h-3.5" />
                             <span>Substituir</span>
                           </span>
@@ -1228,7 +1262,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           variant="secondary"
                           size="sm"
                           onClick={() => setFormData({ ...formData, collaboratorBgImageUrl: '' })}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 text-xs"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 text-xs h-8"
                         >
                           Remover
                         </Button>
@@ -1237,10 +1271,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   ) : (
                     <div>
                       <label className="cursor-pointer block">
-                        <div className="border-2 border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 text-center transition-all cursor-pointer group bg-white">
+                        <div className="border border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-lg p-2.5 flex items-center justify-center gap-2 text-center transition-all cursor-pointer group bg-white">
                           <Upload className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
                           <span className="text-xs font-semibold text-slate-700">Carregar arte de colaborador</span>
-                          <span className="text-[10px] text-slate-400">Proporção A4 (PNG/JPG)</span>
                         </div>
                         <input
                           type="file"
@@ -1257,12 +1290,11 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: FOTO PRINCIPAL */}
             {selectedElementId === 'primaryPhoto' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Foto Principal
                   </h4>
-                  <Badge variant="warning">Camada Posterior</Badge>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1275,7 +1307,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('primaryPhoto', { xPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
 
@@ -1288,7 +1320,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('primaryPhoto', { yPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
 
@@ -1301,7 +1333,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('primaryPhoto', { widthPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
 
@@ -1314,7 +1346,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('primaryPhoto', { heightPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                 </div>
@@ -1325,8 +1357,8 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: LOGO */}
             {selectedElementId === 'schoolLogo' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Logo Principal
                   </h4>
@@ -1341,6 +1373,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         schoolLogoPosition: { ...current, show: current.show === false },
                       });
                     }}
+                    className="h-8 text-xs"
                   >
                     {formData.schoolLogoPosition?.show !== false ? 'ON' : 'OFF'}
                   </Button>
@@ -1358,7 +1391,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById('schoolLogo', { xPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Vertical (%)">
@@ -1370,7 +1403,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById('schoolLogo', { yPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Largura (%)">
@@ -1382,7 +1415,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById('schoolLogo', { widthPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Altura (%)">
@@ -1394,7 +1427,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById('schoolLogo', { heightPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                     </div>
@@ -1406,28 +1439,24 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: NOME DA ESCOLA (Rodapé Fixo) */}
             {selectedElementId === 'schoolName' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Nome da Escola
-                    </h4>
-                    <span className="text-[11px] text-slate-500">
-                      Rodapé fixo centralizado
-                    </span>
-                  </div>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Nome da Escola
+                  </h4>
                   <Button
                     variant="secondary"
                     size="sm"
                     icon={formData.showSchoolName !== false ? Eye : EyeOff}
                     onClick={() => setFormData({ ...formData, showSchoolName: !formData.showSchoolName })}
+                    className="h-8 text-xs"
                   >
                     {formData.showSchoolName !== false ? 'ON' : 'OFF'}
                   </Button>
                 </div>
 
                 {formData.showSchoolName !== false && (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <FormField label="Fonte">
                       <select
                         value={formData.schoolNamePosition?.fontFamily || formData.fontFamily || 'Montserrat, sans-serif'}
@@ -1435,7 +1464,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           const current = formData.schoolNamePosition || { xPercent: 0, yPercent: 97, widthPercent: 100, heightPercent: 2, fontSizePx: 12, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                           setFormData({ ...formData, schoolNamePosition: { ...current, fontFamily: e.target.value } });
                         }}
-                        className={selectClasses}
+                        className={compactSelectClasses}
                       >
                         <option value="Montserrat, sans-serif">Montserrat</option>
                         <option value="Plus Jakarta Sans, sans-serif">Plus Jakarta Sans</option>
@@ -1447,7 +1476,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     </FormField>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <FormField label="Tamanho da fonte (px)">
+                      <FormField label="Tamanho (px)">
                         <input
                           type="number"
                           value={formData.schoolNamePosition?.fontSizePx ?? 12}
@@ -1456,7 +1485,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const current = formData.schoolNamePosition || { xPercent: 0, yPercent: 97, widthPercent: 100, heightPercent: 2, fontSizePx: 12, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                             setFormData({ ...formData, schoolNamePosition: { ...current, fontSizePx: val } });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
 
@@ -1478,7 +1507,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                               const current = formData.schoolNamePosition || { xPercent: 0, yPercent: 97, widthPercent: 100, heightPercent: 2, fontSizePx: 12, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                               setFormData({ ...formData, schoolNamePosition: { ...current, color: e.target.value } });
                             }}
-                            className={inputClasses}
+                            className={compactInputClasses}
                           />
                         </div>
                       </FormField>
@@ -1490,8 +1519,8 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: NOME */}
             {selectedElementId === 'studentName' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Nome
                   </h4>
@@ -1507,7 +1536,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('studentName', { xPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Vertical (%)">
@@ -1519,7 +1548,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('studentName', { yPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Largura (%)">
@@ -1531,7 +1560,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('studentName', { widthPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Tamanho (px)">
@@ -1543,58 +1572,60 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                         setFormData({ ...formData, studentNamePosition: { ...current, fontSizePx: val } });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                 </div>
 
-                <FormField label="Cor">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="color"
-                      value={formData.studentNamePosition?.color || '#ffffff'}
-                      onChange={(e) => {
-                        const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
-                        setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
-                      }}
-                      className="w-8 h-8 rounded border border-slate-200 p-0.5 cursor-pointer shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={formData.studentNamePosition?.color || '#ffffff'}
-                      onChange={(e) => {
-                        const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
-                        setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
-                      }}
-                      className={inputClasses}
-                    />
-                  </div>
-                </FormField>
-
-                <FormField label="Alinhamento do Texto">
-                  <div className="grid grid-cols-3 gap-1">
-                    {(['left', 'center', 'right'] as const).map((alignOpt) => (
-                      <button
-                        key={`student_align_${alignOpt}`}
-                        type="button"
-                        onClick={() => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <FormField label="Cor">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={formData.studentNamePosition?.color || '#ffffff'}
+                        onChange={(e) => {
                           const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
-                          setFormData({ ...formData, studentNamePosition: { ...current, align: alignOpt } });
+                          setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
                         }}
-                        className={`py-1 px-1.5 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                          (formData.studentNamePosition?.align || 'center') === alignOpt
-                            ? 'bg-blue-600 text-white border-blue-600 font-semibold'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {alignOpt === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
-                        {alignOpt === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
-                        {alignOpt === 'right' && <AlignRight className="w-3.5 h-3.5" />}
-                        <span>{alignOpt === 'left' ? 'Esquerda' : alignOpt === 'center' ? 'Centro' : 'Direita'}</span>
-                      </button>
-                    ))}
-                  </div>
-                </FormField>
+                        className="w-8 h-8 rounded border border-slate-200 p-0.5 cursor-pointer shrink-0"
+                      />
+                      <input
+                        type="text"
+                        value={formData.studentNamePosition?.color || '#ffffff'}
+                        onChange={(e) => {
+                          const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                          setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
+                        }}
+                        className={compactInputClasses}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Alinhamento">
+                    <div className="grid grid-cols-3 gap-1">
+                      {(['left', 'center', 'right'] as const).map((alignOpt) => (
+                        <button
+                          key={`student_align_${alignOpt}`}
+                          type="button"
+                          onClick={() => {
+                            const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                            setFormData({ ...formData, studentNamePosition: { ...current, align: alignOpt } });
+                          }}
+                          className={`h-8 px-1 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                            (formData.studentNamePosition?.align || 'center') === alignOpt
+                              ? 'bg-blue-600 text-white border-blue-600 font-semibold'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                          title={alignOpt === 'left' ? 'Esquerda' : alignOpt === 'center' ? 'Centro' : 'Direita'}
+                        >
+                          {alignOpt === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                          {alignOpt === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                          {alignOpt === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                        </button>
+                      ))}
+                    </div>
+                  </FormField>
+                </div>
 
                 {renderPranchetaAlignmentBlock('studentName')}
               </div>
@@ -1602,21 +1633,21 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: ANO */}
             {selectedElementId === 'year' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Ano Principal
                   </h4>
                 </div>
 
                 <FormField label="Formato">
-                  <div className="grid grid-cols-2 gap-1">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, mainYearType: 'text' })}
-                      className={`py-1.5 px-2 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                      className={`h-8 px-2 text-xs font-medium rounded-md border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
                         (formData.mainYearType || 'text') === 'text'
-                          ? 'bg-blue-600 text-white border-blue-600 font-semibold'
+                          ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -1626,9 +1657,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, mainYearType: 'image' })}
-                      className={`py-1.5 px-2 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                      className={`h-8 px-2 text-xs font-medium rounded-md border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
                         formData.mainYearType === 'image'
-                          ? 'bg-blue-600 text-white border-blue-600 font-semibold'
+                          ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -1639,13 +1670,13 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 </FormField>
 
                 {formData.mainYearType === 'image' ? (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
                     <label className="text-[11px] font-semibold text-slate-600 block">
                       Imagem PNG do Ano
                     </label>
                     {formData.mainYearImageUrl ? (
                       <div className="space-y-2">
-                        <div className="h-14 bg-white rounded border border-slate-200 flex items-center justify-center p-1.5">
+                        <div className="h-12 bg-white rounded border border-slate-200 flex items-center justify-center p-1">
                           <img
                             src={formData.mainYearImageUrl}
                             alt="PNG do Ano"
@@ -1681,8 +1712,8 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center p-3 bg-white border border-dashed border-slate-300 rounded-lg hover:border-blue-400 cursor-pointer transition-colors">
-                        <Upload className="w-4 h-4 text-slate-400 mb-1" />
+                      <label className="flex items-center justify-center gap-2 p-2 bg-white border border-dashed border-slate-300 rounded-lg hover:border-blue-400 cursor-pointer transition-colors">
+                        <Upload className="w-4 h-4 text-slate-400" />
                         <span className="text-xs font-medium text-slate-700">Carregar PNG</span>
                         <input
                           type="file"
@@ -1714,7 +1745,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('year', { xPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Vertical (%)">
@@ -1726,7 +1757,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('year', { yPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Largura (%)">
@@ -1738,7 +1769,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('year', { widthPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                   <FormField label="Altura (%)">
@@ -1750,7 +1781,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         const val = parseFloat(e.target.value) || 0;
                         updateElementById('year', { heightPercent: val });
                       }}
-                      className={inputClasses}
+                      className={compactInputClasses}
                     />
                   </FormField>
                 </div>
@@ -1766,7 +1797,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           const current = formData.yearPosition || { xPercent: 82, yPercent: 16.5, widthPercent: 16, heightPercent: 3, fontSizePx: 14, color: '#ffffff', bgColor: '#1e293b', align: 'center', fontWeight: 'bold' };
                           setFormData({ ...formData, yearPosition: { ...current, fontSizePx: val } });
                         }}
-                        className={inputClasses}
+                        className={compactInputClasses}
                       />
                     </FormField>
                     <FormField label="Cor">
@@ -1787,7 +1818,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const current = formData.yearPosition || { xPercent: 82, yPercent: 16.5, widthPercent: 16, heightPercent: 3, fontSizePx: 14, color: '#ffffff', bgColor: '#1e293b', align: 'center', fontWeight: 'bold' };
                             setFormData({ ...formData, yearPosition: { ...current, color: e.target.value } });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </div>
                     </FormField>
@@ -1800,8 +1831,8 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
             {/* CONTEXT: FOTOS SECUNDÁRIAS */}
             {(selectedElementId === 'secondaryDots' || isSecondaryDotSelected) && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                     Fotos Secundárias
                   </h4>
@@ -1809,14 +1840,14 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 </div>
 
                 {/* Moldura Secundária */}
-                <div className="space-y-2 pt-1 border-t border-slate-100">
+                <div className="space-y-2 pt-0.5">
                   <label className="text-[11px] font-semibold text-slate-700 block">
                     Moldura PNG Secundária
                   </label>
 
                   {formData.secondaryFrameUrl ? (
                     <div className="space-y-2">
-                      <div className="relative w-full h-24 bg-slate-100 border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center p-2">
+                      <div className="relative w-full h-16 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
                           src={formData.secondaryFrameUrl}
                           alt="Prévia da Moldura Secundária"
@@ -1825,9 +1856,9 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="cursor-pointer flex-1">
-                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors">
+                          <span className="w-full inline-flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-medium px-2 py-1 rounded-md transition-colors">
                             <Upload className="w-3.5 h-3.5" />
-                            <span>Substituir imagem</span>
+                            <span>Substituir</span>
                           </span>
                           <input
                             type="file"
@@ -1840,7 +1871,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           variant="secondary"
                           size="sm"
                           onClick={() => setFormData({ ...formData, secondaryFrameUrl: '' })}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 h-7 text-xs"
                         >
                           Remover
                         </Button>
@@ -1849,10 +1880,10 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   ) : (
                     <div>
                       <label className="cursor-pointer block">
-                        <div className="border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 rounded-lg p-3 flex items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                          <Upload className="w-4 h-4 text-slate-500 group-hover:text-blue-600" />
+                        <div className="border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/50 rounded-md p-2 flex items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                          <Upload className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
                           <span className="text-xs font-medium text-slate-700">
-                            Carregar imagem
+                            Carregar moldura PNG
                           </span>
                         </div>
                         <input
@@ -1889,7 +1920,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             handleUpdateAllSecondaryDotsSize(val);
                           }
                         }}
-                        className="w-16 px-2 py-1 text-xs border border-slate-300 rounded text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-14 h-8 px-1.5 py-1 text-xs border border-slate-300 rounded text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                       />
                       <span className="text-xs text-slate-500 font-medium">%</span>
                     </div>
@@ -1898,7 +1929,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
                 {/* Seletor de Foto Individual */}
                 {secondaryDots.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
                     <label className="text-[11px] font-semibold text-slate-600 block">
                       Editar Foto Individual:
                     </label>
@@ -1911,7 +1942,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             key={`btn_dot_${dotIdx}`}
                             type="button"
                             onClick={() => setSelectedElementId(dotElemId)}
-                            className={`min-w-[28px] h-7 px-1.5 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center ${
+                            className={`min-w-[26px] h-6 px-1 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center ${
                               isDotActive
                                 ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
                                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -1927,7 +1958,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
                 {/* Ajuste fino da bolinha individual */}
                 {selectedDot && selectedDotIndex !== null && (
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2 mt-2">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2 mt-1.5">
                     <span className="text-xs font-bold text-slate-800 block">
                       Ajuste: Foto #{selectedDotIndex + 1}
                     </span>
@@ -1942,7 +1973,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById(`secondaryDot_${selectedDotIndex}`, { xPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Vertical (%)">
@@ -1954,7 +1985,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById(`secondaryDot_${selectedDotIndex}`, { yPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Largura (%)">
@@ -1966,7 +1997,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById(`secondaryDot_${selectedDotIndex}`, { widthPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                       <FormField label="Altura (%)">
@@ -1978,7 +2009,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                             const val = parseFloat(e.target.value) || 0;
                             updateElementById(`secondaryDot_${selectedDotIndex}`, { heightPercent: val });
                           }}
-                          className={inputClasses}
+                          className={compactInputClasses}
                         />
                       </FormField>
                     </div>

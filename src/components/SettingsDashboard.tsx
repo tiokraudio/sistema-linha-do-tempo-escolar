@@ -31,7 +31,7 @@ interface SettingsDashboardProps {
   schoolConfig: SchoolConfig;
   onSaveSchoolConfig: (config: SchoolConfig) => Promise<void>;
   activeLayoutModel: LayoutModel;
-  onSaveLayoutModel: (model: LayoutModel) => Promise<void>;
+  onSaveLayoutModel: (model: LayoutModel) => Promise<LayoutModel | void>;
   classes: ClassRecord[];
   onUpdateClass?: (id: string, updates: Partial<ClassRecord>) => Promise<void>;
   onReorderClasses?: (ids: string[]) => Promise<void>;

@@ -76,7 +76,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   if (!isOpen || !student) return null;
 
   const isCollaborator = student.personType === 'collaborator';
-  const photoHistorySlots = schoolConfig.photoHistorySlots ?? 10;
+  const photoHistorySlots = schoolConfig.photoHistorySlots ?? 15;
 
   // Registros do aluno / colaborador em ordem cronológica estrita
   const chronologicalRecords = useMemo(() => {

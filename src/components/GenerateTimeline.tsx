@@ -241,7 +241,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
 
   // Selected student object for ESTADO B
   const selectedStudent = students.find((s) => s.id === selectedStudentId) || null;
-  const maxSlots = schoolConfig.photoHistorySlots ?? 10;
+  const maxSlots = schoolConfig.photoHistorySlots ?? 15;
 
   // Derive historical trajectory for selected student
   const studentTrajectory = useMemo(() => {

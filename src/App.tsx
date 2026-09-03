@@ -735,7 +735,7 @@ function MainAppContent() {
     await fetchData();
   };
 
-  const maxSlots = schoolConfig.photoHistorySlots ?? 10;
+  const maxSlots = schoolConfig.photoHistorySlots ?? 15;
   const workQueueData = useMemo(() => {
     return buildWorkQueueData(students, records, timelines, maxSlots, periods);
   }, [students, records, timelines, maxSlots, periods]);

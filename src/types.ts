@@ -101,7 +101,7 @@ export interface AcademicYearRecord {
 export interface SchoolConfig {
   schoolName: string;
   schoolLogo: string;
-  photoHistorySlots?: number; // Quantidade de posições do Histórico Fotográfico (padrão 10)
+  photoHistorySlots?: number; // Quantidade de posições do Histórico Fotográfico (padrão 15)
 }
 
 export interface TextElementPosition {
@@ -137,7 +137,7 @@ export interface DotPosition {
 }
 
 export interface CompositionConfig {
-  configIndex: number; // 0 to 10
+  configIndex: number; // 0 to 15
   label: string; // "Configuração 0", "Configuração 1", etc.
   secondaryDots: DotPosition[];
 }
