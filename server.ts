@@ -1929,27 +1929,53 @@ async function startServer() {
     });
   });
 
-  // Batch Import Collaborators (Cadastro em Lote sem criação de turmas ou registros automáticos)
+  // Batch Import Collaborators (Cadastro e Conciliação em Lote vinculado ao Período Letivo)
   app.post('/api/collaborators/batch-import', (req, res) => {
-    const { items } = req.body;
+    const { year, items } = req.body;
+
+    if (!year) {
+      return res.status(400).json({ error: 'O período letivo de destino é obrigatório.' });
+    }
+
+    const cleanYear = String(year).trim();
+    if (!/^\d{4}$/.test(cleanYear)) {
+      return res.status(400).json({ error: 'O período letivo deve conter exatamente 4 dígitos numéricos (ex: 2026).' });
+    }
+
+    const targetPeriod = store.periods.find((p) => String(p.name) === cleanYear || p.id === cleanYear);
+    if (targetPeriod && targetPeriod.active === false) {
+      return res.status(400).json({
+        error: `O período letivo ${cleanYear} está inativo e não aceita novos registros. Ative o período em Configurações → Períodos Letivos.`,
+      });
+    }
+
+    if (isPeriodClosed(cleanYear)) {
+      return res.status(400).json({
+        error: `O período letivo ${cleanYear} está FECHADO e não aceita novos registros.`,
+      });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Nenhum colaborador para importar.' });
     }
 
-    let newCount = 0;
-    let alreadyExistsCount = 0;
+    let newCollaboratorsCount = 0;
+    let updatedCollaboratorsCount = 0;
+    let newRecordsCount = 0;
+    let alreadyInPeriodCount = 0;
     let errorsCount = 0;
 
     const results: Array<{
       enrollment: string;
       name: string;
-      status: 'new_collaborator' | 'already_exists' | 'error';
+      status: 'new_collaborator' | 'updated_collaborator' | 'error';
       message?: string;
       collaboratorId?: string;
+      recordId?: string;
     }> = [];
 
-    const newlyCreated: Student[] = [];
+    const newlyCreatedCollaborators: Student[] = [];
+    const newlyCreatedRecords: AcademicYearRecord[] = [];
     const seenBatchEnrollments = new Set<string>();
 
     for (let index = 0; index < items.length; index++) {
@@ -1993,19 +2019,70 @@ async function startServer() {
 
       // Check if person already exists in store.students
       const existingPerson = store.students.find((s) => s.enrollment === rawEnrollment);
+
       if (existingPerson) {
-        alreadyExistsCount++;
+        // Se a pessoa for um aluno, não permitir sobrescrever como colaborador
+        if (existingPerson.personType !== 'collaborator') {
+          errorsCount++;
+          results.push({
+            enrollment: rawEnrollment,
+            name: rawName,
+            status: 'error',
+            message: `Matrícula já pertence ao ALUNO "${existingPerson.name}". Não é possível importar como colaborador.`,
+            collaboratorId: existingPerson.id,
+          });
+          continue;
+        }
+
+        // Colaborador já existente: Atualização cadastral (Upsert)
+        if (rawName && existingPerson.name !== rawName) {
+          existingPerson.name = rawName;
+        }
+        existingPerson.updatedAt = new Date().toISOString();
+
+        // Garantir que esteja associado ao período letivo selecionado
+        const existingRecord = store.records.find(
+          (r) => r.studentId === existingPerson.id && String(r.year) === cleanYear
+        );
+
+        let recordId = existingRecord?.id;
+        let isNewRecordInPeriod = false;
+
+        if (!existingRecord) {
+          const newRecord: AcademicYearRecord = {
+            id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_${index}`,
+            studentId: existingPerson.id,
+            year: cleanYear,
+            className: '',
+            photoUrl: '',
+            cropSettings: { x: 50, y: 50, zoom: 1.0 },
+            createdAt: new Date().toISOString(),
+          };
+          store.records.push(newRecord);
+          newlyCreatedRecords.push(newRecord);
+          newRecordsCount++;
+          recordId = newRecord.id;
+          isNewRecordInPeriod = true;
+        } else {
+          alreadyInPeriodCount++;
+        }
+
+        updatedCollaboratorsCount++;
+
         results.push({
           enrollment: rawEnrollment,
           name: existingPerson.name,
-          status: 'already_exists',
-          message: `Identificador já cadastrado no sistema (${existingPerson.personType === 'collaborator' ? 'Colaborador' : 'Aluno'}). Ignorado para evitar duplicidade.`,
+          status: 'updated_collaborator',
+          message: isNewRecordInPeriod
+            ? `Cadastro atualizado e associado ao período letivo ${cleanYear}.`
+            : `Cadastro atualizado. Vínculo ao período ${cleanYear} e fotografias mantidos intactos.`,
           collaboratorId: existingPerson.id,
+          recordId,
         });
         continue;
       }
 
-      // Create new collaborator
+      // Novo colaborador
       const newCollaborator: Student = {
         id: `collab_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_${index}`,
         enrollment: rawEnrollment,
@@ -2015,15 +2092,30 @@ async function startServer() {
       };
 
       store.students.push(newCollaborator);
-      newlyCreated.push(newCollaborator);
-      newCount++;
+      newlyCreatedCollaborators.push(newCollaborator);
+      newCollaboratorsCount++;
+
+      // Associar ao período letivo selecionado
+      const newRecord: AcademicYearRecord = {
+        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_${index}`,
+        studentId: newCollaborator.id,
+        year: cleanYear,
+        className: '',
+        photoUrl: '',
+        cropSettings: { x: 50, y: 50, zoom: 1.0 },
+        createdAt: new Date().toISOString(),
+      };
+      store.records.push(newRecord);
+      newlyCreatedRecords.push(newRecord);
+      newRecordsCount++;
 
       results.push({
         enrollment: rawEnrollment,
         name: rawName,
         status: 'new_collaborator',
-        message: 'Colaborador cadastrado com sucesso.',
+        message: `Novo colaborador cadastrado e vinculado ao período letivo ${cleanYear}.`,
         collaboratorId: newCollaborator.id,
+        recordId: newRecord.id,
       });
     }
 
@@ -2032,12 +2124,19 @@ async function startServer() {
 
     res.json({
       success: true,
+      year: cleanYear,
       totalProcessed: items.length,
-      newCount,
-      alreadyExistsCount,
+      newCollaboratorsCount,
+      updatedCollaboratorsCount,
+      newRecordsCount,
+      alreadyInPeriodCount,
       errorsCount,
       results,
-      newlyCreated,
+      newlyCreatedCollaborators,
+      newlyCreatedRecords,
+      // Backward compatibility aliases
+      newCount: newCollaboratorsCount,
+      updatedCount: updatedCollaboratorsCount,
     });
   });
 

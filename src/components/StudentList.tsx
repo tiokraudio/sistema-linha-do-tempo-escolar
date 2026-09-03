@@ -585,7 +585,9 @@ export const StudentList: React.FC<StudentListProps> = ({
         <BatchImportCollaboratorsModal
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
+          periods={periods || []}
           students={students}
+          records={records || []}
           onImportSuccess={async () => {
             if (onDataReload) {
               await onDataReload();

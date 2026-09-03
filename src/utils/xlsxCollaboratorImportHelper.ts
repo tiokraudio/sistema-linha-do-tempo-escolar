@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Student } from '../types';
+import { Student, AcademicYearRecord } from '../types';
 
 export interface RawCollaboratorImportRow {
   rowIndex: number;
@@ -12,10 +12,11 @@ export interface CollaboratorImportPreviewItem {
   rowIndex: number;
   enrollment: string;
   name: string;
-  status: 'new_collaborator' | 'already_exists' | 'error';
+  status: 'new_collaborator' | 'updated_collaborator' | 'error';
   statusLabel: string;
   message?: string;
   isExisting: boolean;
+  hasRecordInPeriod?: boolean;
   isDuplicateInSheet?: boolean;
   isValid: boolean;
 }
@@ -23,9 +24,11 @@ export interface CollaboratorImportPreviewItem {
 export interface CollaboratorBatchImportSummary {
   totalRows: number;
   newCollaboratorsCount: number;
-  alreadyExistsCount: number;
+  updatedCollaboratorsCount: number;
+  alreadyInPeriodCount: number;
   errorsCount: number;
   validCount: number;
+  targetPeriod: string;
 }
 
 /**
@@ -68,28 +71,31 @@ export function generateCollaboratorImportTemplateXLSX(): void {
     ['INSTRUÇÕES PARA PREENCHIMENTO DO MODELO DE IMPORTAÇÃO DE COLABORADORES'],
     [''],
     ['1. MATRÍCULA / CÓDIGO (Obrigatório):'],
-    ['   - Preencha o código ou matrícula de identificação do colaborador.'],
+    ['   - Preencha o código ou matrícula de identificação funcional do colaborador.'],
     ['   - O identificador é tratado estritamente como TEXTO pelo sistema.'],
     ['   - Zeros à esquerda são 100% preservados (ex: 000101, 00101 e 101 são identificadores distintos).'],
     [''],
     ['2. NOME COMPLETO (Obrigatório):'],
     ['   - Informe o nome completo do colaborador.'],
     [''],
-    ['3. REGRAS DO CADASTRO DE COLABORADORES:'],
-    ['   - Colaboradores NÃO possuem turma, cargo/função ou confirmação de matrícula escolar.'],
-    ['   - A importação realiza o cadastro cadastral da pessoa (personType: "collaborator").'],
-    ['   - O vínculo com o período letivo ativo e fotografias é realizado posteriormente em "Registrar Período".'],
-    ['   - Colaboradores com código/matrícula já cadastrado no sistema não serão duplicados.'],
-    ['   - Linhas com códigos repetidos na própria planilha serão sinalizadas como erro.'],
+    ['3. REGRAS DE CONCILIAÇÃO E VÍNCULO AO PERÍODO LETIVO (UPSERT POR MATRÍCULA):'],
+    ['   - A importação exige a seleção do Período Letivo de destino no sistema.'],
+    ['   - Colaboradores novos são cadastrados e automaticamente associados ao período letivo selecionado.'],
+    ['   - Colaboradores já cadastrados no sistema (mesma matrícula):'],
+    ['       * Têm seus dados cadastrais (nome) atualizados com base no arquivo.'],
+    ['       * São automaticamente associados ao período letivo selecionado caso ainda não tenham registro no ano.'],
+    ['       * Se já possuírem registro no ano, suas fotos, enquadramentos e histórico são 100% PRESERVADOS.'],
+    ['   - Colaboradores não utilizam turma nem progressão pedagógica escolar.'],
     [''],
     ['4. DICAS GERAIS:'],
     ['   - Não altere o nome das colunas do cabeçalho da primeira aba.'],
-    ['   - Não insira colunas extras como turma ou série.'],
+    ['   - Não insira colunas desnecessárias como turma ou série.'],
+    ['   - Linhas duplicadas na própria planilha serão sinalizadas como erro.'],
   ];
 
   const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
   wsInstructions['!cols'] = [
-    { wch: 85 },
+    { wch: 95 },
   ];
 
   XLSX.utils.book_append_sheet(wb, wsInstructions, 'INSTRUÇÕES');
@@ -224,11 +230,14 @@ export async function parseCollaboratorXLSXFile(file: File): Promise<RawCollabor
 }
 
 /**
- * Valida as linhas importadas de colaboradores contra duplicidades e campos obrigatórios.
+ * Valida as linhas importadas de colaboradores contra duplicidades, campos obrigatórios
+ * e conciliação de período letivo com upsert por matrícula.
  */
 export function validateCollaboratorImportRows(
   rows: RawCollaboratorImportRow[],
-  existingStudents: Student[]
+  targetPeriod: string,
+  existingStudents: Student[],
+  existingRecords: AcademicYearRecord[] = []
 ): {
   items: CollaboratorImportPreviewItem[];
   summary: CollaboratorBatchImportSummary;
@@ -236,17 +245,36 @@ export function validateCollaboratorImportRows(
   const seenEnrollments = new Set<string>();
 
   let newCollaboratorsCount = 0;
-  let alreadyExistsCount = 0;
+  let updatedCollaboratorsCount = 0;
+  let alreadyInPeriodCount = 0;
   let errorsCount = 0;
   let validCount = 0;
 
   const items: CollaboratorImportPreviewItem[] = [];
+  const cleanPeriod = String(targetPeriod || '').trim();
 
   for (const row of rows) {
     const rawEnrollment = String(row.enrollment || '').trim();
     const rawName = String(row.name || '').trim().toUpperCase();
 
-    // 1. Validação de Matrícula/Código preenchido
+    // 1. Validação de Período Letivo
+    if (!cleanPeriod) {
+      errorsCount++;
+      items.push({
+        id: `row_${row.rowIndex}_noperiod`,
+        rowIndex: row.rowIndex,
+        enrollment: rawEnrollment || '—',
+        name: rawName || '—',
+        status: 'error',
+        statusLabel: 'Sem Período',
+        message: 'Selecione um período letivo de destino para realizar a importação.',
+        isExisting: false,
+        isValid: false,
+      });
+      continue;
+    }
+
+    // 2. Validação de Matrícula/Código preenchido
     if (!rawEnrollment) {
       errorsCount++;
       items.push({
@@ -263,7 +291,7 @@ export function validateCollaboratorImportRows(
       continue;
     }
 
-    // 2. Duplicidade na própria planilha
+    // 3. Duplicidade na própria planilha
     if (seenEnrollments.has(rawEnrollment)) {
       errorsCount++;
       items.push({
@@ -272,7 +300,7 @@ export function validateCollaboratorImportRows(
         enrollment: rawEnrollment,
         name: rawName || '—',
         status: 'error',
-        statusLabel: 'Erro',
+        statusLabel: 'Duplicado na Planilha',
         message: 'Código / Matrícula repetido no mesmo arquivo de importação.',
         isExisting: false,
         isDuplicateInSheet: true,
@@ -282,7 +310,7 @@ export function validateCollaboratorImportRows(
     }
     seenEnrollments.add(rawEnrollment);
 
-    // 3. Validação de Nome preenchido
+    // 4. Validação de Nome preenchido
     if (!rawName) {
       errorsCount++;
       items.push({
@@ -299,23 +327,63 @@ export function validateCollaboratorImportRows(
       continue;
     }
 
-    // 4. Checagem de existência no sistema
+    // 5. Checagem de existência no sistema (Upsert e Conciliação)
     const existingPerson = existingStudents.find((s) => s.enrollment === rawEnrollment);
 
     if (existingPerson) {
-      alreadyExistsCount++;
-      // Itens já existentes são sinalizados como informativos (não serão duplicados nem importados como novo)
-      items.push({
-        id: `row_${row.rowIndex}_${rawEnrollment}`,
-        rowIndex: row.rowIndex,
-        enrollment: rawEnrollment,
-        name: existingPerson.name,
-        status: 'already_exists',
-        statusLabel: 'Já cadastrado',
-        message: `Pessoa já cadastrada no sistema (${existingPerson.personType === 'collaborator' ? 'Colaborador' : 'Aluno'}). Esta linha será ignorada para evitar duplicidade.`,
-        isExisting: true,
-        isValid: false, // Não é erro impeditivo do arquivo, mas não é uma nova linha a ser inserida
-      });
+      // Se a pessoa for um aluno, sinalizar conflito
+      if ((existingPerson.personType || 'student') !== 'collaborator') {
+        errorsCount++;
+        items.push({
+          id: `row_${row.rowIndex}_${rawEnrollment}`,
+          rowIndex: row.rowIndex,
+          enrollment: rawEnrollment,
+          name: rawName,
+          status: 'error',
+          statusLabel: 'Conflito de Matrícula',
+          message: `Matrícula já pertence ao ALUNO "${existingPerson.name}". Não é possível cadastrar como colaborador.`,
+          isExisting: true,
+          isValid: false,
+        });
+        continue;
+      }
+
+      // Colaborador já cadastrado: Atualização cadastral + vínculo com período letivo
+      updatedCollaboratorsCount++;
+      validCount++;
+
+      const hasRecordInPeriod = existingRecords.some(
+        (r) => r.studentId === existingPerson.id && String(r.year) === cleanPeriod
+      );
+
+      if (hasRecordInPeriod) {
+        alreadyInPeriodCount++;
+        items.push({
+          id: `row_${row.rowIndex}_${rawEnrollment}`,
+          rowIndex: row.rowIndex,
+          enrollment: rawEnrollment,
+          name: rawName,
+          status: 'updated_collaborator',
+          statusLabel: 'Atualização (Já no período)',
+          message: `Colaborador existente. Dados cadastrais serão atualizados e o registro em ${cleanPeriod} (fotos e recortes) será 100% preservado.`,
+          isExisting: true,
+          hasRecordInPeriod: true,
+          isValid: true,
+        });
+      } else {
+        items.push({
+          id: `row_${row.rowIndex}_${rawEnrollment}`,
+          rowIndex: row.rowIndex,
+          enrollment: rawEnrollment,
+          name: rawName,
+          status: 'updated_collaborator',
+          statusLabel: 'Atualização & Novo Vínculo',
+          message: `Colaborador existente. Dados cadastrais serão atualizados e novo vínculo será gerado no período ${cleanPeriod}.`,
+          isExisting: true,
+          hasRecordInPeriod: false,
+          isValid: true,
+        });
+      }
     } else {
       // Colaborador novo
       newCollaboratorsCount++;
@@ -326,9 +394,10 @@ export function validateCollaboratorImportRows(
         enrollment: rawEnrollment,
         name: rawName,
         status: 'new_collaborator',
-        statusLabel: 'Novo colaborador',
-        message: 'Pronto para cadastrar com personType: "collaborator".',
+        statusLabel: 'Novo Colaborador',
+        message: `Novo colaborador. Será cadastrado e vinculado ao período letivo ${cleanPeriod}.`,
         isExisting: false,
+        hasRecordInPeriod: false,
         isValid: true,
       });
     }
@@ -337,9 +406,11 @@ export function validateCollaboratorImportRows(
   const summary: CollaboratorBatchImportSummary = {
     totalRows: rows.length,
     newCollaboratorsCount,
-    alreadyExistsCount,
+    updatedCollaboratorsCount,
+    alreadyInPeriodCount,
     errorsCount,
     validCount,
+    targetPeriod: cleanPeriod,
   };
 
   return { items, summary };
