@@ -75,14 +75,15 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 py-8 relative overflow-hidden selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-between items-center px-4 pt-8 pb-0 relative overflow-hidden selection:bg-blue-600 selection:text-white">
       {/* Subtle Background Accents */}
       <div className="absolute inset-0 pointer-events-none opacity-20">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/30 rounded-full blur-3xl"></div>
         <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="w-full max-w-md relative z-10 space-y-6">
+      {/* Center Card */}
+      <div className="w-full max-w-md relative z-10 space-y-6 my-auto py-6">
         {/* Brand Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex p-3 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">

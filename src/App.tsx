@@ -20,6 +20,7 @@ import { ConfirmPeriod } from './components/ConfirmPeriod';
 import { StudentCentralModal } from './components/StudentCentralModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { GenerateTimeline } from './components/GenerateTimeline';
+import { CarometroModal } from './components/CarometroModal';
 import { AcademicYearClosingDashboard } from './components/AcademicYearClosingDashboard';
 import { SettingsDashboard } from './components/SettingsDashboard';
 import { LoginScreen } from './components/LoginScreen';
@@ -760,53 +761,67 @@ function MainAppContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4 font-sans">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <h2 className="text-lg font-bold text-slate-200">Carregando Linha do Tempo Escolar...</h2>
-        <p className="text-xs text-slate-400 mt-1">Carregando dados escolares</p>
+      <div className="h-screen h-[100dvh] bg-slate-950 text-white flex flex-col justify-between items-center p-0 font-sans overflow-hidden">
+        <div />
+        <div className="flex flex-col items-center justify-center my-auto p-4">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <h2 className="text-lg font-bold text-slate-200">Carregando Linha do Tempo Escolar...</h2>
+          <p className="text-xs text-slate-400 mt-1">Carregando dados escolares</p>
+        </div>
+        <Footer variant="dark" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
-      {/* Header */}
+    <div className="h-screen h-[100dvh] bg-slate-100 text-slate-900 flex flex-col overflow-hidden font-sans">
+      {/* Header - Fixo na moldura superior */}
       <Header
         config={schoolConfig}
         currentPeriodName={currentPeriodName}
+        isSettingsActive={
+          activeTab === 'settings' ||
+          activeTab === 'school_settings' ||
+          activeTab === 'layout_models' ||
+          activeTab === 'classes' ||
+          activeTab === 'periods' ||
+          activeTab === 'backup_security'
+        }
         onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
         onOpenAccountSettings={() => setActiveTab('account_settings')}
+        onOpenSettings={() => setActiveTab('settings')}
       />
 
-      <div className="flex flex-1 min-h-0">
-        {/* Sidebar Navigation */}
+      {/* Miolo da Aplicação: Sidebar + Espaço de Trabalho */}
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        {/* Sidebar Navigation - Fixa na lateral, rola internamente se necessário */}
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onOpenAccountSettings={() => setActiveTab('account_settings')}
         />
 
-        {/* Main Content Area + Footer */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Central Content Area - Container de rolagem independente */}
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto overflow-x-hidden bg-slate-100">
           <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
-          {activeTab === 'students' && (
-            <StudentList
-              personType="student"
-              students={students}
-              records={records}
-              classes={classes}
-              periods={periods}
-              timelines={timelines}
-              onOpenStudentCentral={(std) => handleOpenStudentCentral(std, 'Voltar para Alunos')}
-              onConfirmStudentPeriod={handleConfirmStudentPeriod}
-              onDeleteRecord={handleDeleteRecord}
-              onUpdateRecordCrops={handleUpdateRecordCrops}
-              onAddStudent={handleAddStudent}
-              onEditStudent={handleEditStudent}
-              onDeleteStudent={handleDeleteStudent}
-              onDataReload={fetchData}
-            />
-          )}
+            {activeTab === 'students' && (
+              <StudentList
+                personType="student"
+                students={students}
+                records={records}
+                classes={classes}
+                periods={periods}
+                timelines={timelines}
+                onOpenStudentCentral={(std) => handleOpenStudentCentral(std, 'Voltar para Alunos')}
+                onConfirmStudentPeriod={handleConfirmStudentPeriod}
+                onDeleteRecord={handleDeleteRecord}
+                onUpdateRecordCrops={handleUpdateRecordCrops}
+                onAddStudent={handleAddStudent}
+                onEditStudent={handleEditStudent}
+                onDeleteStudent={handleDeleteStudent}
+                onDataReload={fetchData}
+              />
+            )}
 
           {activeTab === 'collaborators' && (
             <StudentList
@@ -888,8 +903,28 @@ function MainAppContent() {
               onUpdatePeriodStatus={handleUpdatePeriodStatus}
               onClosePeriod={handleClosePeriod}
               onOpenStudentCentral={(std) => handleOpenStudentCentral(std, 'Voltar para Produção')}
+              onNavigateToCarometro={() => setActiveTab('carometro')}
               initialStudentId={timelineInitialStudentId}
               initialStatusFilter="all"
+            />
+          )}
+
+          {activeTab === 'carometro' && (
+            <CarometroModal
+              isOpen={true}
+              isInline={true}
+              students={students}
+              records={records}
+              classes={classes}
+              periods={periods}
+              schoolConfig={schoolConfig}
+              timelines={timelines}
+              initialClass="all"
+              initialPeriod={currentPeriodName || undefined}
+              onClose={() => setActiveTab('generate_timeline')}
+              onUpdateRecordCrop={handleUpdateRecordCrop}
+              onBatchAutoFaceCrop={handleBatchAutoFaceCrop}
+              onRefreshData={fetchData}
             />
           )}
 
@@ -979,9 +1014,10 @@ function MainAppContent() {
             />
           )}
         </main>
-        <Footer />
       </div>
     </div>
+
+      <Footer />
 
       {/* B.25 / B.28.2 Central de Gestão do Aluno (Ficha Completa Única) */}
       {isCentralModalOpen && centralStudent && (

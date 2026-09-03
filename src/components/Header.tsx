@@ -1,20 +1,24 @@
 import React, { useState } from 'react';
 import { SchoolConfig } from '../types';
-import { School, Search, LogOut, User, ShieldCheck } from 'lucide-react';
+import { School, Search, LogOut, User, ShieldCheck, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   config: SchoolConfig;
   currentPeriodName?: string;
+  isSettingsActive?: boolean;
   onOpenGlobalSearch?: () => void;
   onOpenAccountSettings?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   config,
   currentPeriodName,
+  isSettingsActive = false,
   onOpenGlobalSearch,
   onOpenAccountSettings,
+  onOpenSettings,
 }) => {
   const { adminEmail, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -25,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-white px-4 sm:px-6 py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30">
+    <header className="bg-slate-900 border-b border-slate-800 text-white px-4 sm:px-6 py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shrink-0 w-full">
       {/* Logo & School Name */}
       <div className="flex items-center gap-3">
         {config.schoolLogo ? (
@@ -71,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* Right Controls: Period Indicator + Admin Badge + Logout */}
+      {/* Right Controls: Period Indicator + Admin Badge + Settings + Logout */}
       <div className="flex items-center gap-2 text-xs">
         {currentPeriodName && (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300">
@@ -96,6 +100,27 @@ export const Header: React.FC<HeaderProps> = ({
             <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
             <span className="font-medium max-w-[140px] truncate">{adminEmail || 'Admin'}</span>
           </div>
+        )}
+
+        {/* Settings Button - Discreto, elegante, com acabamento refinado */}
+        {onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className={`relative p-2 rounded-lg border transition-all duration-200 cursor-pointer group flex items-center justify-center ${
+              isSettingsActive
+                ? 'bg-blue-600 border-blue-500 text-white shadow-xs'
+                : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:border-slate-600'
+            }`}
+            title="Configurações do Sistema"
+            aria-label="Configurações do Sistema"
+          >
+            <Settings
+              className={`w-4 h-4 transition-transform duration-500 ease-out group-hover:rotate-90 ${
+                isSettingsActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'
+              }`}
+            />
+          </button>
         )}
 
         {/* Logout Button */}

@@ -100,6 +100,7 @@ interface GenerateTimelineProps {
   onUpdatePeriodStatus?: (periodId: string, status: any) => Promise<void>;
   onClosePeriod?: (periodId: string, stats: any) => Promise<void>;
   onOpenStudentCentral?: (student: Student) => void;
+  onNavigateToCarometro?: () => void;
   initialStudentId?: string;
   initialStatusFilter?:
     | 'all'
@@ -125,6 +126,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
   onBatchAutoFaceCrop,
   onRefreshData,
   onOpenStudentCentral,
+  onNavigateToCarometro,
   initialStudentId = '',
   initialStatusFilter = 'all',
 }) => {
@@ -1363,7 +1365,13 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
                     variant="secondary"
                     size="sm"
                     icon={LayoutGrid}
-                    onClick={() => setIsCarometroModalOpen(true)}
+                    onClick={() => {
+                      if (onNavigateToCarometro) {
+                        onNavigateToCarometro();
+                      } else {
+                        setIsCarometroModalOpen(true);
+                      }
+                    }}
                     title="Carômetro Escolar: Composição e impressão de fotografias dos alunos"
                     className="text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 text-xs font-semibold border-slate-200"
                   >

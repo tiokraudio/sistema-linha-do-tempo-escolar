@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab } from '../types';
-import { Users, Briefcase, Sparkles, Settings, Camera, LogOut, ShieldCheck } from 'lucide-react';
+import { Users, Briefcase, Camera, Clock, LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface SidebarProps {
@@ -35,36 +35,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
     },
   ];
 
-  // 3. LINHA DO TEMPO
-  const timelineGroup = [
+  // 3. PRODUÇÃO (Módulos principais de trabalho com mesmo peso hierárquico)
+  const productionGroup = [
     {
       id: 'generate_timeline' as ActiveTab,
-      label: 'Produção',
-      icon: Sparkles,
+      label: 'Compor Linha do Tempo',
+      icon: Clock,
     },
-  ];
-
-  // 4. CONFIGURAÇÕES
-  const configGroup = [
     {
-      id: 'settings' as ActiveTab,
-      label: 'Configurações',
-      icon: Settings,
+      id: 'carometro' as ActiveTab,
+      label: 'Compor Carômetro',
+      icon: LayoutGrid,
     },
   ];
 
   const renderNavItem = (item: { id: ActiveTab; label: string; icon: React.ElementType }) => {
     const Icon = item.icon;
-    const isActive =
-      item.id === 'settings'
-        ? activeTab === 'settings' ||
-          activeTab === 'school_settings' ||
-          activeTab === 'layout_models' ||
-          activeTab === 'classes' ||
-          activeTab === 'periods' ||
-          activeTab === 'backup_security' ||
-          activeTab === 'account_settings'
-        : activeTab === item.id;
+    const isActive = activeTab === item.id;
 
     return (
       <button
@@ -85,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
   };
 
   return (
-    <aside className="w-60 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col shrink-0 min-h-[calc(100vh-57px)]">
+    <aside className="w-60 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col shrink-0 h-full min-h-0 overflow-hidden select-none">
       <div className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
         {/* 1. CADASTRO */}
         <div>
@@ -103,25 +90,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
           <nav className="space-y-0.5">{photoGroup.map(renderNavItem)}</nav>
         </div>
 
-        {/* 3. LINHA DO TEMPO */}
+        {/* 3. PRODUÇÃO */}
         <div>
           <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Linha do Tempo
+            Produção
           </div>
-          <nav className="space-y-0.5">{timelineGroup.map(renderNavItem)}</nav>
-        </div>
-
-        {/* 4. CONFIGURAÇÕES */}
-        <div>
-          <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Sistema
-          </div>
-          <nav className="space-y-0.5">{configGroup.map(renderNavItem)}</nav>
+          <nav className="space-y-0.5">{productionGroup.map(renderNavItem)}</nav>
         </div>
       </div>
 
       {/* Footer Status & Admin Info */}
-      <div className="p-3 border-t border-slate-800/80 space-y-2">
+      <div className="p-3 border-t border-slate-800/80 space-y-2 shrink-0">
         <div className="flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>

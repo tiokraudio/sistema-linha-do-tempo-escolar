@@ -63,7 +63,8 @@ import { Alert } from './ui/Alert';
 import { inputClasses, selectClasses } from './ui/FormField';
 
 interface CarometroModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
+  isInline?: boolean;
   students: Student[];
   records: AcademicYearRecord[];
   classes: ClassRecord[];
@@ -72,14 +73,15 @@ interface CarometroModalProps {
   timelines?: GeneratedTimeline[];
   initialClass?: string;
   initialPeriod?: string;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdateRecordCrop?: (recordId: string, crop: CropSettings) => Promise<void>;
   onBatchAutoFaceCrop?: (updates: Array<{ recordId: string; autoFaceCrop: CropSettings }>) => Promise<void>;
   onRefreshData?: () => Promise<void>;
 }
 
 export const CarometroModal: React.FC<CarometroModalProps> = ({
-  isOpen,
+  isOpen = true,
+  isInline = false,
   students,
   records,
   classes,
@@ -755,11 +757,20 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
       !it.hasAutoFaceDetection
   ).length;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
-        {/* Modal Top Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
+  if (!isOpen && !isInline) {
+    return null;
+  }
+
+  const modalInner = (
+    <div
+      className={`bg-white rounded-2xl border border-slate-200 w-full flex flex-col ${
+        isInline
+          ? 'shadow-xs'
+          : 'shadow-2xl max-w-6xl h-[92vh] overflow-hidden'
+      }`}
+    >
+      {/* Modal / Page Top Header */}
+      <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
           <div className="flex items-center gap-3">
             <div
               className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-xs ${
@@ -852,13 +863,16 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {onClose && !isInline && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1670,6 +1684,15 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
           </div>
         )}
       </div>
+    );
+
+  if (isInline) {
+    return modalInner;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-3 sm:p-5 animate-in fade-in duration-150">
+      {modalInner}
     </div>
   );
 };

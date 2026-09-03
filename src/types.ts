@@ -371,6 +371,7 @@ export type ActiveTab =
   | 'classes'
   | 'photo_management'
   | 'generate_timeline'
+  | 'carometro'
   | 'generated_timelines'
   | 'batch_print'
   | 'settings'
