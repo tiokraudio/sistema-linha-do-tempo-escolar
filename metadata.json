@@ -1,0 +1,6 @@
+{
+  "name": "Linha do Tempo Escolar",
+  "description": "Sistema de gestão e geração de linhas do tempo fotográficas escolares",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
