@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { School, Lock, Mail, KeyRound, AlertCircle, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Button } from './ui/Button';
+import { Footer } from './Footer';
 
 export const LoginScreen: React.FC = () => {
   const { isSetup, login, setup, sessionExpired, clearSessionExpired } = useAuth();
@@ -286,6 +287,8 @@ export const LoginScreen: React.FC = () => {
           </p>
         </div>
       </div>
+
+      <Footer variant="dark" className="mt-6 z-10" />
     </div>
   );
 };

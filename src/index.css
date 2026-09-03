@@ -32,3 +32,11 @@ select:hover {
   transition: none !important;
   animation: none !important;
 }
+
+/* Ocultar elementos de UI durante impressão ou exportação */
+@media print {
+  .no-print,
+  .print-ignore {
+    display: none !important;
+  }
+}
