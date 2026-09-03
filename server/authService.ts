@@ -11,6 +11,11 @@ export interface AdminAccount {
   email: string;
   passwordHash: string; // hex string of derived key
   passwordSalt: string; // hex string of salt
+  displayName?: string;
+  role?: string;
+  avatarUrl?: string | null;
+  department?: string;
+  preferences?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +112,66 @@ export function isAuthSetup(): boolean {
  */
 export function getAdminEmail(): string | null {
   return authStore.admin?.email || null;
+}
+
+/**
+ * Gets the current admin profile info.
+ */
+export function getAdminProfile() {
+  if (!authStore.admin) return null;
+  return {
+    email: authStore.admin.email,
+    displayName: authStore.admin.displayName || 'Administrador Geral',
+    role: authStore.admin.role || 'Administrador',
+    avatarUrl: authStore.admin.avatarUrl || null,
+    department: authStore.admin.department || 'Gestão Escolar & Tecnologia',
+    preferences: authStore.admin.preferences || {
+      confirmCriticalActions: true,
+      notifyBackups: true,
+      uppercaseNames: true,
+    },
+    createdAt: authStore.admin.createdAt,
+    updatedAt: authStore.admin.updatedAt,
+  };
+}
+
+/**
+ * Updates administrator profile details (display name, role, avatar, department, preferences).
+ */
+export function updateAdminProfile(data: {
+  displayName?: string;
+  role?: string;
+  avatarUrl?: string | null;
+  department?: string;
+  preferences?: Record<string, any>;
+}) {
+  if (!isAuthSetup() || !authStore.admin) {
+    throw new Error('Acesso administrativo não configurado.');
+  }
+
+  if (data.displayName !== undefined) {
+    authStore.admin.displayName = String(data.displayName).trim();
+  }
+  if (data.role !== undefined) {
+    authStore.admin.role = String(data.role).trim();
+  }
+  if (data.avatarUrl !== undefined) {
+    authStore.admin.avatarUrl = data.avatarUrl;
+  }
+  if (data.department !== undefined) {
+    authStore.admin.department = String(data.department).trim();
+  }
+  if (data.preferences !== undefined && typeof data.preferences === 'object') {
+    authStore.admin.preferences = {
+      ...(authStore.admin.preferences || {}),
+      ...data.preferences,
+    };
+  }
+
+  authStore.admin.updatedAt = new Date().toISOString();
+  saveAuthStore(authStore);
+
+  return getAdminProfile();
 }
 
 /**

@@ -1,34 +1,31 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Mail,
   KeyRound,
-  ShieldCheck,
   AlertCircle,
   CheckCircle2,
-  Wrench,
-  Trash2,
-  AlertTriangle,
-  FileArchive,
-  GraduationCap,
-  Sparkles,
-  Users,
-  Check,
-  Calendar,
-  Layers,
-  School,
   Camera,
-  Crop,
-  Image,
-  Info,
+  Trash2,
+  Lock,
+  User,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Wrench,
+  AlertTriangle,
   CheckSquare,
   Square,
-  RotateCcw,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
-import { Alert } from './ui/Alert';
+import { FormField, inputClasses } from './ui/FormField';
 import { apiFetch } from '../utils/api';
+import {
+  getLocalUserProfile,
+  updateServerUserProfile,
+  fetchServerUserProfile,
+} from '../utils/userProfile';
 import {
   SchoolConfig,
   ClassRecord,
@@ -38,6 +35,7 @@ import {
   AcademicYearRecord,
   GeneratedTimeline,
   SelectiveClearCategory,
+  UserProfile,
 } from '../types';
 
 export interface AccountSettingsProps {
@@ -51,15 +49,10 @@ export interface AccountSettingsProps {
   onDataCleared?: () => Promise<void>;
 }
 
-interface CategoryDefinition {
+interface CategoryItem {
   id: SelectiveClearCategory;
   name: string;
-  group: 'students' | 'structural';
-  description: string;
-  icon: React.ElementType;
-  getCount: () => number | string;
-  getCountLabel: () => string;
-  details: string[];
+  count: number | string;
 }
 
 export const AccountSettings: React.FC<AccountSettingsProps> = ({
@@ -73,15 +66,24 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   onDataCleared,
 }) => {
   const { adminEmail, changeEmail, changePassword } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Change Email State
+  // Perfil do Administrador
+  const [profile, setProfile] = useState<UserProfile>(() => getLocalUserProfile(adminEmail));
+  const [displayName, setDisplayName] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileErrorMsg, setProfileErrorMsg] = useState<string | null>(null);
+
+  // Alteração de E-mail
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [emailCurrentPassword, setEmailCurrentPassword] = useState('');
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [emailSuccessMsg, setEmailSuccessMsg] = useState<string | null>(null);
   const [emailErrorMsg, setEmailErrorMsg] = useState<string | null>(null);
 
-  // Change Password State
+  // Alteração de Senha
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -89,10 +91,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   const [passwordSuccessMsg, setPasswordSuccessMsg] = useState<string | null>(null);
   const [passwordErrorMsg, setPasswordErrorMsg] = useState<string | null>(null);
 
-  // Maintenance: Selected categories state
+  // Ferramentas do Banco (Acordeão Colapsável)
+  const [isMaintenanceExpanded, setIsMaintenanceExpanded] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<SelectiveClearCategory[]>([]);
-
-  // Maintenance: Modal & execution state
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isClearing, setIsClearing] = useState(false);
@@ -104,7 +105,15 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     backupSizeBytes?: number;
   } | null>(null);
 
-  // Contagens auxiliares
+  // Carregar dados iniciais do perfil
+  useEffect(() => {
+    fetchServerUserProfile(adminEmail).then((p) => {
+      setProfile(p);
+      setDisplayName(p.displayName || 'Administrador');
+    });
+  }, [adminEmail]);
+
+  // Contagens para a seção de manutenção
   const photosCount = useMemo(() => {
     return records.filter((r) => r.photoUrl && r.photoUrl.trim() !== '').length;
   }, [records]);
@@ -124,422 +133,198 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     ).length;
   }, [records]);
 
-  // Definições de todas as 11 categorias permitidas
-  const CATEGORIES: CategoryDefinition[] = useMemo(
+  // Categorias Compactas para Limpeza Seletiva - Grupo 1: Dados Operacionais & Produção
+  const operationalCategories: CategoryItem[] = useMemo(
     () => [
-      // GRUPO: DADOS DOS ALUNOS E COLABORADORES
       {
         id: 'students',
         name: 'Alunos',
-        group: 'students',
-        description: 'Cadastros e dados de identificação pessoal dos alunos.',
-        icon: Users,
-        getCount: () => students.filter((s) => (s.personType || 'student') === 'student').length,
-        getCountLabel: () => `${students.filter((s) => (s.personType || 'student') === 'student').length} aluno(s)`,
-        details: [
-          'Cadastro e ID dos alunos',
-          'Nomes e dados de matrícula',
-          'Histórico de criação dos cadastros',
-        ],
+        count: students.filter((s) => (s.personType || 'student') === 'student').length,
       },
       {
         id: 'collaborators',
         name: 'Colaboradores',
-        group: 'students',
-        description: 'Cadastros e dados de identificação pessoal dos colaboradores.',
-        icon: Users,
-        getCount: () => students.filter((s) => s.personType === 'collaborator').length,
-        getCountLabel: () => `${students.filter((s) => s.personType === 'collaborator').length} colaborador(es)`,
-        details: [
-          'Cadastro e ID dos colaboradores',
-          'Nomes e identificadores',
-          'Histórico de criação dos cadastros',
-        ],
+        count: students.filter((s) => s.personType === 'collaborator').length,
       },
       {
         id: 'records',
         name: 'Matrículas / Registros',
-        group: 'students',
-        description: 'Registros de períodos letivos vinculados a alunos e colaboradores.',
-        icon: GraduationCap,
-        getCount: () => records.length,
-        getCountLabel: () => `${records.length} registro(s)`,
-        details: [
-          'Registros de períodos letivos por ano',
-          'Associações de turma e vínculos de período',
-          'Histórico de períodos cadastrados',
-        ],
+        count: records.length,
       },
       {
         id: 'photos',
         name: 'Fotografias',
-        group: 'students',
-        description: 'Fotografias escolares vinculadas aos registros dos alunos.',
-        icon: Camera,
-        getCount: () => photosCount,
-        getCountLabel: () => `${photosCount} foto(s)`,
-        details: [
-          'Arquivos e imagens fotográficas dos alunos',
-          'Fotos de produção e retratos escolares',
-        ],
+        count: photosCount,
       },
       {
         id: 'timelines',
-        name: 'Produções da Linha do Tempo',
-        group: 'students',
-        description: 'Composições e artes da Linha do Tempo salvas no sistema.',
-        icon: Sparkles,
-        getCount: () => timelines.length,
-        getCountLabel: () => `${timelines.length} composição(ões)`,
-        details: [
-          'Artes e composições salvas da Linha do Tempo',
-          'Histórico de geração de painéis',
-          'Status de revisão das composições',
-        ],
+        name: 'Linha do Tempo',
+        count: timelines.length,
       },
       {
         id: 'carometro',
         name: 'Dados do Carômetro',
-        group: 'students',
-        description: 'Ajustes, enquadramentos e detecções específicas do Carômetro.',
-        icon: Image,
-        getCount: () => carometroCount,
-        getCountLabel: () => `${carometroCount} ajuste(s)`,
-        details: [
-          'Enquadramentos individuais do Carômetro (carometroCrop)',
-          'Detecções faciais automáticas para o Carômetro (autoFaceCrop)',
-        ],
+        count: carometroCount,
       },
       {
         id: 'crops',
-        name: 'Enquadramentos / Ajustes',
-        group: 'students',
-        description: 'Todos os enquadramentos, crops e ajustes fotográficos.',
-        icon: Crop,
-        getCount: () => cropsCount,
-        getCountLabel: () => `${cropsCount} ajuste(s)`,
-        details: [
-          'Ajustes da foto principal (timelinePrimaryCrop)',
-          'Ajustes das fotos secundárias (timelineSecondaryCrop)',
-          'Ajustes do Carômetro (carometroCrop)',
-          'Detecções faciais automáticas (autoFaceCrop)',
-          'Ajustes legados e sugestões de enquadramento',
-        ],
+        name: 'Enquadramentos / Recortes',
+        count: cropsCount,
       },
+    ],
+    [students, records, photosCount, timelines, carometroCount, cropsCount]
+  );
 
-      // GRUPO: CONFIGURAÇÕES E DADOS ESTRUTURAIS
+  // Categorias Compactas para Limpeza Seletiva - Grupo 2: Configurações Estruturais da Escola
+  const structuralCategories: CategoryItem[] = useMemo(
+    () => [
       {
         id: 'classes',
         name: 'Turmas',
-        group: 'structural',
-        description: 'Turmas oficiais cadastradas e ordenação pedagógica.',
-        icon: Layers,
-        getCount: () => classes.length,
-        getCountLabel: () => `${classes.length} turma(s)`,
-        details: [
-          'Listagem de turmas cadastradas',
-          'Etapas de ensino e ordenação pedagógica',
-          'Status ativo/inativo das turmas',
-        ],
+        count: classes.length,
       },
       {
         id: 'periods',
         name: 'Períodos Letivos',
-        group: 'structural',
-        description: 'Anos letivos cadastrados e controle de encerramento.',
-        icon: Calendar,
-        getCount: () => periods.length,
-        getCountLabel: () => `${periods.length} período(s)`,
-        details: [
-          'Anos letivos registrados (ex: 2026, 2025...)',
-          'Status de produção e períodos fechados',
-          'Definição do período ativo do sistema',
-        ],
+        count: periods.length,
       },
       {
         id: 'school_data',
         name: 'Dados da Escola',
-        group: 'structural',
-        description: 'Nome institucional, logotipo e configurações da escola.',
-        icon: School,
-        getCount: () => (schoolConfig?.schoolName ? 'Configurado' : 'Vazio'),
-        getCountLabel: () =>
-          schoolConfig?.schoolName
-            ? `"${schoolConfig.schoolName}" ${schoolConfig.schoolLogo ? '(com Logo)' : ''}`
-            : 'Padrão não informado',
-        details: [
-          'Nome oficial da instituição de ensino (schoolName)',
-          'Logotipo oficial da escola em imagem/base64 (schoolLogo)',
-          'Quantidade de slots no histórico fotográfico (photoHistorySlots)',
-        ],
+        count: schoolConfig?.schoolName ? '1' : '0',
       },
       {
         id: 'models',
         name: 'Modelos da Linha do Tempo',
-        group: 'structural',
-        description: 'Modelos de layout, slots e posições da Linha do Tempo.',
-        icon: LayoutModelIcon,
-        getCount: () => models.length,
-        getCountLabel: () => `${models.length} modelo(s)`,
-        details: [
-          'Modelos e templates cadastrados da Linha do Tempo',
-          'Posições de fotos principais e slots secundários',
-          'Textos e elementos gráficos dos layouts',
-        ],
+        count: models.length,
       },
     ],
-    [students, records, photosCount, timelines, carometroCount, cropsCount, classes, periods, schoolConfig, models]
+    [classes, periods, schoolConfig, models]
   );
 
-  // Toggle single category selection
-  const handleToggleCategory = (catId: SelectiveClearCategory) => {
-    setSelectedCategories((prev) =>
-      prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
-    );
-  };
+  const allCategories = useMemo(
+    () => [...operationalCategories, ...structuralCategories],
+    [operationalCategories, structuralCategories]
+  );
 
-  // Select all categories
-  const handleSelectAll = () => {
-    const allIds = CATEGORIES.map((c) => c.id);
-    setSelectedCategories(allIds);
-  };
+  // Upload e compressão de Avatar
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // Clear all selections
-  const handleClearSelection = () => {
-    setSelectedCategories([]);
-  };
-
-  const isAllSelected = selectedCategories.length === CATEGORIES.length && CATEGORIES.length > 0;
-
-  // Análise de Dependências em tempo real
-  const detectedDependencies = useMemo(() => {
-    const warnings: string[] = [];
-
-    const hasStudents = selectedCategories.includes('students');
-    const hasCollaborators = selectedCategories.includes('collaborators');
-    const hasRecords = selectedCategories.includes('records');
-    const hasPhotos = selectedCategories.includes('photos');
-    const hasTimelines = selectedCategories.includes('timelines');
-    const hasCrops = selectedCategories.includes('crops');
-    const hasClasses = selectedCategories.includes('classes');
-    const hasPeriods = selectedCategories.includes('periods');
-    const hasModels = selectedCategories.includes('models');
-
-    // 1. Alunos selecionados sem Matrículas (Bloqueio de integridade)
-    if (hasStudents && !hasRecords) {
-      const studentIds = new Set(students.filter((s) => (s.personType || 'student') === 'student').map((s) => s.id));
-      const dependentRecords = records.filter((r) => r.studentId && studentIds.has(r.studentId));
-      if (dependentRecords.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentRecords.length} matrícula(s) vinculadas aos alunos que serão removidos. Não é permitido excluir 'Alunos' mantendo as 'Matrículas' órfãs. Selecione também a categoria 'Matrículas' para autorizar a limpeza.`
-        );
-      }
-    }
-
-    // 1b. Colaboradores selecionados sem Matrículas / Registros (Bloqueio de integridade)
-    if (hasCollaborators && !hasRecords) {
-      const collabIds = new Set(students.filter((s) => s.personType === 'collaborator').map((s) => s.id));
-      const dependentRecords = records.filter((r) => r.studentId && collabIds.has(r.studentId));
-      if (dependentRecords.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentRecords.length} registro(s) de períodos vinculados aos colaboradores que serão removidos. Não é permitido excluir 'Colaboradores' mantendo os registros órfãos. Selecione também a categoria 'Matrículas' para autorizar a limpeza.`
-        );
-      }
-    }
-
-    // 2. Alunos selecionados sem Produções da Linha do Tempo (Bloqueio de integridade)
-    if (hasStudents && !hasTimelines) {
-      const studentIds = new Set(students.filter((s) => (s.personType || 'student') === 'student').map((s) => s.id));
-      const dependentTimelines = timelines.filter((t) => t.studentId && studentIds.has(t.studentId));
-      if (dependentTimelines.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentTimelines.length} composição(ões) da Linha do Tempo vinculadas aos alunos que serão removidos. Não é permitido excluir 'Alunos' mantendo as 'Produções da Linha do Tempo' órfãs. Selecione também a categoria 'Produções da Linha do Tempo' para autorizar a limpeza.`
-        );
-      }
-    }
-
-    // 2b. Colaboradores selecionados sem Produções da Linha do Tempo (Bloqueio de integridade)
-    if (hasCollaborators && !hasTimelines) {
-      const collabIds = new Set(students.filter((s) => s.personType === 'collaborator').map((s) => s.id));
-      const dependentTimelines = timelines.filter((t) => t.studentId && collabIds.has(t.studentId));
-      if (dependentTimelines.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentTimelines.length} composição(ões) da Linha do Tempo vinculadas aos colaboradores que serão removidos. Não é permitido excluir 'Colaboradores' mantendo as 'Produções da Linha do Tempo' órfãs. Selecione também a categoria 'Produções da Linha do Tempo' para autorizar a limpeza.`
-        );
-      }
-    }
-
-    // 3. Turmas selecionadas sem Matrículas (Bloqueio de integridade)
-    if (hasClasses && !hasRecords) {
-      const classNames = new Set(classes.map((c) => c.name.trim().toUpperCase()));
-      const dependentRecords = records.filter((r) => {
-        if (!r.className) return false;
-        const cleanName = r.className.trim().toUpperCase();
-        return classNames.has(cleanName);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const targetSize = 256;
+            canvas.width = targetSize;
+            canvas.height = targetSize;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(event.target?.result as string);
+              return;
+            }
+            const minDim = Math.min(img.width, img.height);
+            const sx = (img.width - minDim) / 2;
+            const sy = (img.height - minDim) / 2;
+            ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, targetSize, targetSize);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          };
+          img.onerror = () => resolve(event.target?.result as string);
+          img.src = event.target?.result as string;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
-      if (dependentRecords.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentRecords.length} matrícula(s) vinculadas às turmas que seriam removidas. Não é permitido excluir 'Turmas' isoladamente mantendo matrículas desvinculadas. Selecione também a categoria 'Matrículas' para autorizar a limpeza.`
-        );
+
+      const updated = await updateServerUserProfile({ avatarUrl: base64 });
+      setProfile(updated);
+      setProfileSuccessMsg('Foto de perfil atualizada com sucesso!');
+      setTimeout(() => setProfileSuccessMsg(null), 3500);
+    } catch (err) {
+      console.error('Erro ao carregar foto:', err);
+      setProfileErrorMsg('Não foi possível processar a imagem selecionada.');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
     }
+  };
 
-    // 4. Períodos Letivos selecionados sem Matrículas (Bloqueio de integridade)
-    if (hasPeriods && !hasRecords) {
-      const periodNames = new Set(periods.map((p) => String(p.name).trim()));
-      const dependentRecords = records.filter((r) => {
-        if (r.year === undefined || r.year === null) return false;
-        const yrStr = String(r.year).trim();
-        return periodNames.has(yrStr);
+  // Remover foto de perfil
+  const handleRemoveAvatar = async () => {
+    try {
+      const updated = await updateServerUserProfile({ avatarUrl: null });
+      setProfile(updated);
+      setProfileSuccessMsg('Foto de perfil removida.');
+      setTimeout(() => setProfileSuccessMsg(null), 3500);
+    } catch (err) {
+      console.error('Erro ao remover avatar:', err);
+    }
+  };
+
+  // Salvar Nome de Exibição
+  const handleSaveProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
+
+    try {
+      const updated = await updateServerUserProfile({
+        displayName: displayName.trim() || 'Administrador',
       });
-      if (dependentRecords.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentRecords.length} matrícula(s) cadastradas nos períodos letivos que seriam removidos. Não é permitido excluir 'Períodos Letivos' isoladamente mantendo matrículas com período órfão. Selecione também a categoria 'Matrículas' para autorizar a limpeza.`
-        );
-      }
+
+      setProfile(updated);
+      setProfileSuccessMsg('Nome salvo com sucesso!');
+      setTimeout(() => setProfileSuccessMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erro ao salvar nome:', err);
+      setProfileErrorMsg(err.message || 'Falha ao atualizar nome.');
+    } finally {
+      setIsSavingProfile(false);
     }
+  };
 
-    // 5. Modelos da Linha do Tempo selecionados sem Produções (Bloqueio de integridade)
-    if (hasModels && !hasTimelines) {
-      const modelIds = new Set(models.map((m) => m.id));
-      const dependentTimelines = timelines.filter((t) => t.modelId && modelIds.has(t.modelId));
-      if (dependentTimelines.length > 0) {
-        warnings.push(
-          `⚠️ Bloqueio de Integridade: Existem ${dependentTimelines.length} composição(ões) da Linha do Tempo vinculadas aos modelos que seriam removidos. Não é permitido excluir 'Modelos da Linha do Tempo' isoladamente mantendo produções órfãs. Selecione também a categoria 'Produções da Linha do Tempo' para autorizar a limpeza.`
-        );
-      }
-    }
-
-    // 6. Fotografias selecionadas sem Enquadramentos / Ajustes
-    if (hasPhotos && !hasCrops && !hasRecords) {
-      if (cropsCount > 0) {
-        warnings.push(
-          `Ao remover as fotografias, os ${cropsCount} enquadramentos e ajustes existentes perderão a imagem fotográfica de referência.`
-        );
-      }
-    }
-
-    // 7. Enquadramentos selecionados sem Fotografias
-    if (hasCrops && !hasPhotos && !hasRecords) {
-      warnings.push(
-        'As fotografias originais dos alunos serão mantidas, mas todos os recortes, enquadramentos e detecções faciais serão restaurados ao padrão original.'
-      );
-    }
-
-    return warnings;
-  }, [selectedCategories, students, records, classes, periods, models, timelines, cropsCount]);
-
-  // Verificação de bloqueio estrito por integridade relacional
-  const isBlockedByIntegrity = useMemo(() => {
-    const hasStudents = selectedCategories.includes('students');
-    const hasCollaborators = selectedCategories.includes('collaborators');
-    const hasRecords = selectedCategories.includes('records');
-    const hasClasses = selectedCategories.includes('classes');
-    const hasPeriods = selectedCategories.includes('periods');
-    const hasTimelines = selectedCategories.includes('timelines');
-    const hasModels = selectedCategories.includes('models');
-
-    // 1. Alunos sem Matrículas
-    if (hasStudents && !hasRecords) {
-      const studentIds = new Set(students.filter((s) => (s.personType || 'student') === 'student').map((s) => s.id));
-      if (records.some((r) => r.studentId && studentIds.has(r.studentId))) return true;
-    }
-
-    // 1b. Colaboradores sem Matrículas / Registros
-    if (hasCollaborators && !hasRecords) {
-      const collabIds = new Set(students.filter((s) => s.personType === 'collaborator').map((s) => s.id));
-      if (records.some((r) => r.studentId && collabIds.has(r.studentId))) return true;
-    }
-
-    // 2. Alunos sem Produções
-    if (hasStudents && !hasTimelines) {
-      const studentIds = new Set(students.filter((s) => (s.personType || 'student') === 'student').map((s) => s.id));
-      if (timelines.some((t) => t.studentId && studentIds.has(t.studentId))) return true;
-    }
-
-    // 2b. Colaboradores sem Produções
-    if (hasCollaborators && !hasTimelines) {
-      const collabIds = new Set(students.filter((s) => s.personType === 'collaborator').map((s) => s.id));
-      if (timelines.some((t) => t.studentId && collabIds.has(t.studentId))) return true;
-    }
-
-    // 3. Turmas sem Matrículas
-    if (hasClasses && !hasRecords) {
-      const classNames = new Set(classes.map((c) => c.name.trim().toUpperCase()));
-      if (
-        records.some((r) => {
-          if (!r.className) return false;
-          const cleanName = r.className.trim().toUpperCase();
-          return classNames.has(cleanName);
-        })
-      ) {
-        return true;
-      }
-    }
-
-    // 4. Períodos sem Matrículas
-    if (hasPeriods && !hasRecords) {
-      const periodNames = new Set(periods.map((p) => String(p.name).trim()));
-      if (
-        records.some((r) => {
-          if (r.year === undefined || r.year === null) return false;
-          const yrStr = String(r.year).trim();
-          return periodNames.has(yrStr);
-        })
-      ) {
-        return true;
-      }
-    }
-
-    // 5. Modelos sem Produções
-    if (hasModels && !hasTimelines) {
-      const modelIds = new Set(models.map((m) => m.id));
-      if (timelines.some((t) => t.modelId && modelIds.has(t.modelId))) return true;
-    }
-
-    return false;
-  }, [selectedCategories, students, records, classes, periods, models, timelines]);
-
-  // Form Submit: Email
+  // Salvar E-mail
   const handleChangeEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSavingEmail) return;
-
     setEmailErrorMsg(null);
     setEmailSuccessMsg(null);
 
-    const cleanEmail = newEmail.trim();
-    if (!cleanEmail) {
+    if (!newEmail.trim()) {
       setEmailErrorMsg('Informe o novo endereço de e-mail.');
       return;
     }
-    if (cleanEmail.toLowerCase() === (adminEmail || '').toLowerCase()) {
-      setEmailErrorMsg('O novo e-mail deve ser diferente do e-mail atual.');
-      return;
-    }
     if (!emailCurrentPassword) {
-      setEmailErrorMsg('Informe sua senha atual para autorizar a alteração.');
+      setEmailErrorMsg('Informe sua senha atual para confirmar.');
       return;
     }
 
-    setIsSavingEmail(true);
     try {
-      await changeEmail(emailCurrentPassword, cleanEmail);
-      setEmailSuccessMsg('E-mail administrativo atualizado com sucesso!');
+      setIsSavingEmail(true);
+      await changeEmail(emailCurrentPassword, newEmail.trim());
+      setProfile((prev) => ({ ...prev, email: newEmail.trim() }));
+      setEmailSuccessMsg('E-mail atualizado com sucesso!');
       setNewEmail('');
       setEmailCurrentPassword('');
+      setTimeout(() => {
+        setEmailSuccessMsg(null);
+        setIsEmailModalOpen(false);
+      }, 1800);
     } catch (err: any) {
-      setEmailErrorMsg(err.message || 'Erro ao atualizar e-mail.');
+      setEmailErrorMsg(err.message || 'Falha ao atualizar e-mail.');
     } finally {
       setIsSavingEmail(false);
     }
   };
 
-  // Form Submit: Password
+  // Salvar Senha
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSavingPassword) return;
-
     setPasswordErrorMsg(null);
     setPasswordSuccessMsg(null);
 
@@ -547,84 +332,80 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       setPasswordErrorMsg('Informe a senha atual.');
       return;
     }
-    if (!newPassword) {
-      setPasswordErrorMsg('Informe a nova senha.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordErrorMsg('A nova senha deve conter no mínimo 6 caracteres.');
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordErrorMsg('A nova senha deve ter no mínimo 6 caracteres.');
       return;
     }
     if (newPassword !== confirmPassword) {
       setPasswordErrorMsg('A confirmação da nova senha não confere.');
       return;
     }
-    if (currentPassword === newPassword) {
-      setPasswordErrorMsg('A nova senha deve ser diferente da senha atual.');
-      return;
-    }
 
-    setIsSavingPassword(true);
     try {
+      setIsSavingPassword(true);
       await changePassword(currentPassword, newPassword);
-      setPasswordSuccessMsg('Senha administrativa atualizada com sucesso!');
+      setPasswordSuccessMsg('Senha atualizada com sucesso!');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setTimeout(() => setPasswordSuccessMsg(null), 3500);
     } catch (err: any) {
-      setPasswordErrorMsg(err.message || 'Erro ao atualizar senha.');
+      setPasswordErrorMsg(err.message || 'Falha ao atualizar senha.');
     } finally {
       setIsSavingPassword(false);
     }
   };
 
-  // Open confirmation modal
-  const handleOpenClearModal = () => {
-    if (selectedCategories.length === 0) return;
-    setConfirmText('');
-    setClearErrorMsg(null);
-    setIsClearing(false);
-    setClearingStep('');
-    setIsConfirmModalOpen(true);
+  // Helper para iniciais do avatar
+  const avatarInitials = useMemo(() => {
+    const name = profile.displayName || adminEmail || 'Admin';
+    const parts = name.split(/[\s@._-]+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }, [profile.displayName, adminEmail]);
+
+  // Ações da Limpeza Seletiva
+  const handleToggleCategory = (catId: SelectiveClearCategory) => {
+    setSelectedCategories((prev) =>
+      prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
+    );
   };
 
-  // Execute Selective Clear with mandatory prior backup
-  const handleExecuteClear = async () => {
-    if (confirmText !== 'LIMPAR PRODUÇÃO' || isClearing || selectedCategories.length === 0 || isBlockedByIntegrity) return;
+  const handleSelectAll = () => {
+    setSelectedCategories(allCategories.map((c) => c.id));
+  };
 
-    setClearErrorMsg(null);
-    setIsClearing(true);
+  const handleClearSelection = () => {
+    setSelectedCategories([]);
+  };
+
+  const handleExecuteSelectiveClear = async () => {
+    const trimmedConfirm = confirmText.trim().toUpperCase();
+    if (trimmedConfirm !== 'EXCLUIR') {
+      setClearErrorMsg('Digite exatamente a palavra "EXCLUIR".');
+      return;
+    }
 
     try {
-      // Passo 1: Preparando backup
-      setClearingStep('Preparando backup de segurança...');
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // Passo 2: Validando backup
-      setClearingStep('Validando integridade do backup...');
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // Passo 3: Removendo dados selecionados
-      setClearingStep('Removendo dados selecionados...');
+      setIsClearing(true);
+      setClearErrorMsg(null);
+      setClearingStep('Criando backup de segurança e executando limpeza...');
 
       const response = await apiFetch('/api/maintenance/clear-production-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           categories: selectedCategories,
-          confirmation: confirmText,
+          confirmation: 'EXCLUIR',
         }),
       });
 
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.error || 'Falha ao executar limpeza seletiva.');
       }
-
-      // Passo 4: Finalizando
-      setClearingStep('Finalizando...');
-      await new Promise((resolve) => setTimeout(resolve, 300));
 
       setClearSuccessData({
         backupFilename: data.backup?.filename || 'backup_automatico.zip',
@@ -636,13 +417,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       setConfirmText('');
       setSelectedCategories([]);
 
-      // Notificar aplicação para recarregar dados do servidor
       if (onDataCleared) {
         await onDataCleared();
       }
     } catch (err: any) {
-      console.error('Erro na limpeza seletiva:', err);
-      setClearErrorMsg(err.message || 'Ocorreu um erro ao tentar executar a limpeza seletiva.');
+      setClearErrorMsg(err.message || 'Erro ao executar limpeza seletiva.');
     } finally {
       setIsClearing(false);
       setClearingStep('');
@@ -650,662 +429,535 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* 1. Account Summary Card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-6 h-6" />
+    <div className="space-y-6 max-w-5xl mx-auto pb-10">
+      {/* CABEÇALHO DA PÁGINA */}
+      <div className="pb-3 border-b border-slate-200">
+        <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          <User className="w-5 h-5 text-blue-600 shrink-0" />
+          Minha Conta
+        </h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Gerencie sua identificação de acesso e credenciais de segurança do sistema.
+        </p>
+      </div>
+
+      {/* GRADE PRINCIPAL: 2 COLUNAS ALINHADAS NO TOPO */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        
+        {/* ========================================================================= */}
+        {/* COLUNA ESQUERDA: IDENTIFICAÇÃO DO ADMINISTRADOR                          */}
+        {/* ========================================================================= */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-5">
+          {/* Cabeçalho do Card */}
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0">
+              <User className="w-4 h-4" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
-                  Conta de Acesso Administrativo
-                </h3>
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                  Admin Protegido
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 mt-0.5">
-                E-mail atual:{' '}
-                <span className="font-semibold text-slate-900 font-mono">
-                  {adminEmail || 'admin'}
-                </span>
+              <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                Identificação do Administrador
+              </h3>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Foto de perfil e dados de acesso
               </p>
             </div>
           </div>
 
-          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200/80 rounded-lg px-3 py-2 sm:max-w-xs">
-            <span className="font-semibold text-slate-700">Proteção Permanente:</span> A conta Admin, credenciais e sessão nunca são afetadas por ferramentas de manutenção ou limpeza.
+          {/* Feedback de Perfil */}
+          {profileSuccessMsg && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{profileSuccessMsg}</span>
+            </div>
+          )}
+
+          {profileErrorMsg && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{profileErrorMsg}</span>
+            </div>
+          )}
+
+          {/* Avatar Circular com botões limpos */}
+          <div className="flex items-center gap-4 pt-1">
+            <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white shadow-xs ring-2 ring-slate-200 flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700 text-white shrink-0 select-none">
+              {profile.avatarUrl ? (
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.displayName || 'Avatar'}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-lg font-bold tracking-wider">
+                  {avatarInitials}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 flex-1">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarFileChange}
+                accept="image/png, image/jpeg, image/webp"
+                className="hidden"
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-blue-700 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>Alterar foto</span>
+                </button>
+
+                {profile.avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAvatar}
+                    className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                    title="Remover foto de perfil"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Remover</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Formatos recomendados: JPG, PNG ou WEBP.
+              </p>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* 2. Alterar E-mail e Alterar Senha */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Alterar E-mail */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs flex flex-col justify-between">
-          <form onSubmit={handleChangeEmailSubmit} className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Mail className="w-4 h-4 text-blue-600" />
-              <h4 className="text-sm font-bold text-slate-900">Alterar E-mail</h4>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Altere o endereço de e-mail utilizado para fazer login no sistema escolar.
-            </p>
-
-            {emailSuccessMsg && (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{emailSuccessMsg}</span>
-              </div>
-            )}
-
-            {emailErrorMsg && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{emailErrorMsg}</span>
-              </div>
-            )}
+          {/* Formulário de Identificação */}
+          <form onSubmit={handleSaveProfileSubmit} className="space-y-4 pt-1">
+            <FormField label="Nome de Exibição" required>
+              <input
+                type="text"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Ex: Administrador Geral"
+                className={inputClasses}
+              />
+            </FormField>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">
-                Novo E-mail
+                E-mail de Acesso
               </label>
-              <input
-                type="email"
-                required
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="novo.email@escola.com.br"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="email"
+                  disabled
+                  value={profile.email || adminEmail || ''}
+                  className={`${inputClasses} bg-slate-50 text-slate-600 font-mono`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsEmailModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 h-9 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+                  title="Alterar endereço de e-mail de acesso"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>Trocar e-mail</span>
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">
-                Senha Atual (para confirmação)
-              </label>
-              <input
-                type="password"
-                required
-                value={emailCurrentPassword}
-                onChange={(e) => setEmailCurrentPassword(e.target.value)}
-                placeholder="Sua senha atual"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-              />
-            </div>
-
-            <div className="pt-2">
+            {/* Botão Salvar Alterações alinhado à direita */}
+            <div className="flex justify-end pt-3 border-t border-slate-100">
               <Button
                 type="submit"
                 variant="primary"
-                size="sm"
-                isLoading={isSavingEmail}
-                disabled={isSavingEmail}
-                className="w-full justify-center text-xs font-bold"
+                size="md"
+                isLoading={isSavingProfile}
+                disabled={isSavingProfile}
+                icon={Check}
+                className="px-4 text-xs font-semibold h-9 whitespace-nowrap"
               >
-                {isSavingEmail ? 'Salvando novo e-mail...' : 'Salvar novo e-mail'}
+                Salvar Alterações
               </Button>
             </div>
           </form>
         </div>
 
-        {/* Alterar Senha */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs flex flex-col justify-between">
-          <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <KeyRound className="w-4 h-4 text-blue-600" />
-              <h4 className="text-sm font-bold text-slate-900">Alterar Senha</h4>
+        {/* ========================================================================= */}
+        {/* COLUNA DIREITA: ALTERAÇÃO DE SENHA                                        */}
+        {/* ========================================================================= */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-5">
+          {/* Cabeçalho do Card */}
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0">
+              <KeyRound className="w-4 h-4" />
             </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                Segurança & Senha de Acesso
+              </h3>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Atualize a senha de login administrativo
+              </p>
+            </div>
+          </div>
 
-            <p className="text-xs text-slate-500">
-              Atualize a senha de acesso administrativo ao sistema escolar.
-            </p>
+          {/* Feedback de Senha */}
+          {passwordSuccessMsg && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{passwordSuccessMsg}</span>
+            </div>
+          )}
 
-            {passwordSuccessMsg && (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-xs text-emerald-800 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{passwordSuccessMsg}</span>
-              </div>
-            )}
+          {passwordErrorMsg && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{passwordErrorMsg}</span>
+            </div>
+          )}
 
-            {passwordErrorMsg && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{passwordErrorMsg}</span>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">
-                Senha Atual
-              </label>
+          {/* Três inputs verticais alinhados */}
+          <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5 pt-1">
+            <FormField label="Senha Atual" required>
               <input
                 type="password"
                 required
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Digite a senha atual"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                placeholder="Digite sua senha atual"
+                className={inputClasses}
               />
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">
-                Nova Senha
-              </label>
+            <FormField label="Nova Senha" helperText="Mínimo de 6 caracteres" required>
               <input
                 type="password"
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Mínimo de 6 caracteres"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                placeholder="Digite a nova senha"
+                className={inputClasses}
               />
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">
-                Confirmar Nova Senha
-              </label>
+            <FormField label="Confirmar Nova Senha" required>
               <input
                 type="password"
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repita a nova senha"
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                className={inputClasses}
               />
-            </div>
+            </FormField>
 
-            <div className="pt-2">
+            {/* Botão Atualizar Senha alinhado à direita */}
+            <div className="flex justify-end pt-3 border-t border-slate-100">
               <Button
                 type="submit"
                 variant="primary"
-                size="sm"
+                size="md"
                 isLoading={isSavingPassword}
                 disabled={isSavingPassword}
-                className="w-full justify-center text-xs font-bold"
+                icon={KeyRound}
+                className="px-4 text-xs font-semibold h-9 whitespace-nowrap"
               >
-                {isSavingPassword ? 'Atualizando senha...' : 'Atualizar senha'}
+                Atualizar Senha
               </Button>
             </div>
           </form>
         </div>
+
       </div>
 
-      {/* 3. MANUTENÇÃO DO SISTEMA — LIMPEZA SELETIVA DE DADOS */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs space-y-5">
-        {/* Cabeçalho da Seção */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+      {/* ========================================================================= */}
+      {/* PARTE INFERIOR: FERRAMENTAS DO BANCO (ACORDEÃO COLAPSÁVEL)                */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setIsMaintenanceExpanded(!isMaintenanceExpanded)}
+          className="w-full p-4 px-5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors cursor-pointer"
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-              <Wrench className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+              <Wrench className="w-3.5 h-3.5" />
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Manutenção do Sistema — Limpeza Seletiva</h4>
-              <p className="text-xs text-slate-500">
-                Selecione individualmente os grupos de dados que deseja limpar ou redefinir.
-              </p>
-            </div>
+            <span className="text-xs font-bold text-slate-800">
+              Limpeza Seletiva de Dados (Avançado)
+            </span>
           </div>
 
-          {/* Botões de Seleção Rápida */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={isAllSelected ? handleClearSelection : handleSelectAll}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors"
-            >
-              {isAllSelected ? (
-                <>
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Limpar seleção</span>
-                </>
-              ) : (
-                <>
-                  <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Selecionar tudo</span>
-                </>
-              )}
-            </button>
-            {selectedCategories.length > 0 && !isAllSelected && (
-              <button
-                type="button"
-                onClick={handleClearSelection}
-                className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                Desmarcar todos
-              </button>
+          <div className="text-slate-400">
+            {isMaintenanceExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
             )}
           </div>
-        </div>
+        </button>
 
-        {/* Feedback de sucesso de limpeza anterior */}
-        {clearSuccessData && (
-          <Alert
-            variant="success"
-            title="Limpeza Seletiva Concluída com Sucesso"
-            onClose={() => setClearSuccessData(null)}
-          >
-            <div className="space-y-2 text-xs text-emerald-900">
-              <p>
-                As categorias selecionadas foram processadas e limpas com sucesso no sistema.
-              </p>
-              <div className="bg-emerald-100/70 border border-emerald-300/60 rounded-lg p-2.5 space-y-1 text-emerald-950 font-mono text-[11px]">
-                <div className="flex items-center gap-1.5 font-sans font-semibold">
-                  <FileArchive className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Backup de segurança gerado antes da operação:</span>
+        {isMaintenanceExpanded && (
+          <div className="p-5 border-t border-slate-100 space-y-4 bg-slate-50/40">
+            {clearSuccessData && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1 text-xs text-emerald-900">
+                <div className="flex items-center gap-2 font-bold text-emerald-800">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Limpeza Seletiva Concluída com Sucesso!
                 </div>
-                <div className="text-emerald-800 break-all">{clearSuccessData.backupFilename}</div>
-                {clearSuccessData.backupSizeBytes && (
-                  <div className="text-[10px] text-emerald-700 font-sans">
-                    Tamanho validado: {(clearSuccessData.backupSizeBytes / 1024).toFixed(1)} KB
-                  </div>
-                )}
+                <p className="text-[11px]">
+                  Backup de segurança gerado em:{' '}
+                  <span className="font-mono font-semibold">{clearSuccessData.backupFilename}</span>
+                </p>
               </div>
-              <p className="text-[11px] text-emerald-800">
-                A conta administrativa e todos os módulos não selecionados permaneceram intactos.
-              </p>
-            </div>
-          </Alert>
-        )}
+            )}
 
-        {/* GRUPO 1: DADOS DOS ALUNOS */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-blue-600" />
-              Dados dos Alunos e Produção
-            </span>
-            <span className="text-[11px] text-slate-400">
-              {CATEGORIES.filter((c) => c.group === 'students' && selectedCategories.includes(c.id)).length} de{' '}
-              {CATEGORIES.filter((c) => c.group === 'students').length} selecionados
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {CATEGORIES.filter((c) => c.group === 'students').map((cat) => {
-              const Icon = cat.icon;
-              const isSelected = selectedCategories.includes(cat.id);
-              return (
-                <div
-                  key={cat.id}
-                  onClick={() => handleToggleCategory(cat.id)}
-                  className={`cursor-pointer rounded-xl border p-3.5 transition-all flex flex-col justify-between select-none ${
-                    isSelected
-                      ? 'border-rose-300 bg-rose-50/40 shadow-xs'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                  }`}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? 'bg-rose-100 text-rose-700'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-900">{cat.name}</span>
-                      </div>
-                      <div
-                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-rose-600 border-rose-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-snug">
-                      {cat.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Total encontrado:</span>
-                    <span
-                      className={`font-semibold ${
-                        isSelected ? 'text-rose-700' : 'text-slate-700'
-                      }`}
-                    >
-                      {cat.getCountLabel()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* GRUPO 2: CONFIGURAÇÕES E DADOS ESTRUTURAIS */}
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              Configurações e Dados Estruturais
-            </span>
-            <span className="text-[11px] text-slate-400">
-              {CATEGORIES.filter((c) => c.group === 'structural' && selectedCategories.includes(c.id)).length} de{' '}
-              {CATEGORIES.filter((c) => c.group === 'structural').length} selecionados
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {CATEGORIES.filter((c) => c.group === 'structural').map((cat) => {
-              const Icon = cat.icon;
-              const isSelected = selectedCategories.includes(cat.id);
-              return (
-                <div
-                  key={cat.id}
-                  onClick={() => handleToggleCategory(cat.id)}
-                  className={`cursor-pointer rounded-xl border p-3.5 transition-all flex flex-col justify-between select-none ${
-                    isSelected
-                      ? 'border-rose-300 bg-rose-50/40 shadow-xs'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                  }`}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? 'bg-rose-100 text-rose-700'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="text-xs font-bold text-slate-900">{cat.name}</span>
-                      </div>
-                      <div
-                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-rose-600 border-rose-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-snug">
-                      {cat.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Total:</span>
-                    <span
-                      className={`font-semibold truncate max-w-[130px] ${
-                        isSelected ? 'text-rose-700' : 'text-slate-700'
-                      }`}
-                      title={cat.getCountLabel()}
-                    >
-                      {cat.getCountLabel()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Rodapé da Manutenção com Botão de Ação */}
-        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <div className="text-xs font-semibold text-slate-900 flex items-center gap-2">
-              <span>Status da Seleção:</span>
-              <span className="font-bold text-rose-700">
-                {selectedCategories.length === 0
-                  ? 'Nenhuma categoria selecionada'
-                  : isAllSelected
-                  ? `Todas as ${CATEGORIES.length} categorias selecionadas`
-                  : `${selectedCategories.length} de ${CATEGORIES.length} categorias selecionadas`}
+            {/* Ações rápidas de seleção */}
+            <div className="flex items-center justify-between text-xs pb-1">
+              <span className="text-slate-600 font-medium">
+                Selecione as categorias que deseja limpar:
               </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="text-blue-600 hover:text-blue-700 hover:underline font-medium cursor-pointer"
+                >
+                  Selecionar todas
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="text-slate-600 hover:text-slate-800 hover:underline font-medium cursor-pointer"
+                >
+                  Limpar seleção
+                </button>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500">
-              O sistema criará um backup completo e validará o arquivo antes de excluir qualquer dado selecionado.
-            </p>
-          </div>
 
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            icon={Trash2}
-            onClick={handleOpenClearModal}
-            disabled={selectedCategories.length === 0}
-            className="w-full sm:w-auto text-xs font-semibold"
-          >
-            {selectedCategories.length === 0
-              ? 'Selecione as categorias para limpar'
-              : 'Limpar dados selecionados'}
-          </Button>
-        </div>
+            {/* Categorias divididas em dois subgrupos discretos */}
+            <div className="space-y-4">
+              {/* Grupo 1: Dados Operacionais & Produção */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                  <span>Dados Operacionais &amp; Produção</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                  {operationalCategories.map((cat) => {
+                    const isSelected = selectedCategories.includes(cat.id);
+                    return (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => handleToggleCategory(cat.id)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer select-none text-left ${
+                          isSelected
+                            ? 'bg-rose-50 border-rose-300 text-rose-900 font-semibold'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-4 h-4 text-rose-600 shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                        <span className="truncate flex-1">{cat.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                            isSelected
+                              ? 'bg-rose-100 text-rose-800 font-bold'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {cat.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Grupo 2: Configurações Estruturais da Escola */}
+              <div className="space-y-2 pt-3 border-t border-slate-200/80">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>Configurações Estruturais da Escola</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                  {structuralCategories.map((cat) => {
+                    const isSelected = selectedCategories.includes(cat.id);
+                    return (
+                      <button
+                        type="button"
+                        key={cat.id}
+                        onClick={() => handleToggleCategory(cat.id)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer select-none text-left ${
+                          isSelected
+                            ? 'bg-rose-50 border-rose-300 text-rose-900 font-semibold'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-4 h-4 text-rose-600 shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                        <span className="truncate flex-1">{cat.name}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${
+                            isSelected
+                              ? 'bg-rose-100 text-rose-800 font-bold'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {cat.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Rodapé do Acordeão com Ações Claras e Alinhadas */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+              <span className="text-xs text-slate-500">
+                {selectedCategories.length} categoria(s) selecionada(s)
+              </span>
+
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={selectedCategories.length === 0}
+                onClick={() => setIsConfirmModalOpen(true)}
+                icon={Trash2}
+                className="text-xs font-semibold whitespace-nowrap"
+              >
+                Continuar para Limpeza
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ================================================================ */}
-      {/* MODAL DE CONFIRMAÇÃO FORTE E REVISÃO DETALHADA COM DEPENDÊNCIAS */}
-      {/* ================================================================ */}
+      {/* MODAL DE ALTERAÇÃO DE E-MAIL INSTITUCIONAL */}
       <Modal
-        isOpen={isConfirmModalOpen}
-        onClose={() => {
-          if (!isClearing) {
-            setIsConfirmModalOpen(false);
-          }
-        }}
-        title="ATENÇÃO — REVISAR EXCLUSÃO"
-        size="xl"
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        title="Atualizar E-mail de Acesso"
+        size="sm"
       >
-        <div className="space-y-5">
-          {/* ALERTA ESPECIAL QUANDO 'SELECIONAR TUDO' É UTILIZADO */}
-          {isAllSelected ? (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-2 text-amber-950">
-              <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>Você selecionou todas as categorias disponíveis para limpeza</span>
-              </div>
-              <p className="text-xs leading-relaxed text-amber-900">
-                Todas as produções, alunos e configurações estruturais serão limpos. O sistema retornará ao estado inicial limpo.
-              </p>
-              <div className="p-2.5 bg-white/80 border border-amber-200 rounded-lg text-xs font-semibold text-amber-900 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>Mesmo selecionando tudo, a conta administrativa (login, e-mail e senha) NÃO será excluída e permanecerá protegida.</span>
-              </div>
-            </div>
-          ) : (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
-              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700">
-                  Atenção: Revisão de Exclusão Seletiva
-                </h4>
-                <p className="text-xs font-medium leading-relaxed">
-                  Confira atentamente os grupos de dados que serão removidos e as dependências identificadas.
-                </p>
-              </div>
+        <form onSubmit={handleChangeEmailSubmit} className="space-y-4 text-xs">
+          <p className="text-slate-600">
+            Informe o novo endereço de e-mail e confirme sua senha atual de acesso administrativo.
+          </p>
+
+          {emailSuccessMsg && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2 text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{emailSuccessMsg}</span>
             </div>
           )}
 
-          {/* BLOCO DE DEPENDÊNCIAS DETECTADAS (SE HOUVER) */}
-          {detectedDependencies.length > 0 && (
-            <div
-              className={`p-4 border rounded-xl space-y-2 ${
-                isBlockedByIntegrity
-                  ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-400/50'
-                  : 'bg-amber-50/80 border-amber-200'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  {isBlockedByIntegrity
-                    ? 'Bloqueio de Integridade Relacional Ativo:'
-                    : 'Dependências identificadas na seleção atual:'}
-                </span>
-              </div>
-              <ul className="space-y-1.5 text-xs text-amber-900 list-disc list-inside">
-                {detectedDependencies.map((dep, idx) => (
-                  <li key={idx} className="leading-relaxed">
-                    {dep}
-                  </li>
-                ))}
-              </ul>
-              {isBlockedByIntegrity && (
-                <p className="text-[11px] font-semibold text-amber-800 pt-1 border-t border-amber-200/80">
-                  Para autorizar a limpeza, marque também as categorias dependentes indicadas ou cancele a operação.
-                </p>
-              )}
+          {emailErrorMsg && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{emailErrorMsg}</span>
             </div>
           )}
 
-          {/* DUAS COLUNAS: O QUE SERÁ EXCLUÍDO vs O QUE SERÁ PRESERVADO */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Coluna 1: O que será Excluído */}
-            <div className="bg-rose-50/50 border border-rose-200 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-rose-200/80 pb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800">
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span>Será excluído / redefinido:</span>
-                </div>
-                <span className="px-2 py-0.5 bg-rose-200/80 text-rose-900 text-[10px] font-bold rounded-full">
-                  {selectedCategories.length} selecionada(s)
-                </span>
-              </div>
-
-              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                {CATEGORIES.filter((c) => selectedCategories.includes(c.id)).map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="p-2.5 bg-white rounded-lg border border-rose-100 space-y-1 text-xs"
-                  >
-                    <div className="flex items-center justify-between font-bold text-rose-950">
-                      <span>{cat.name}</span>
-                      <span className="text-[11px] font-mono text-rose-700">
-                        {cat.getCountLabel()}
-                      </span>
-                    </div>
-                    <ul className="text-[11px] text-slate-600 list-disc list-inside space-y-0.5 pl-1">
-                      {cat.details.map((d, i) => (
-                        <li key={i}>{d}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Coluna 2: O que será Preservado */}
-            <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Será preservado e protegido:</span>
-                </div>
-                <span className="px-2 py-0.5 bg-emerald-200/80 text-emerald-900 text-[10px] font-bold rounded-full">
-                  Protegido
-                </span>
-              </div>
-
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {/* Conta Admin (Sempre Protegida) */}
-                <div className="p-2.5 bg-white rounded-lg border border-emerald-100 text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-emerald-950">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Conta Administrativa (Permanente)</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 pl-5">
-                    E-mail ({adminEmail || 'admin'}), senha criptografada, hash e credenciais de login.
-                  </p>
-                </div>
-
-                {/* Backups anteriores */}
-                <div className="p-2.5 bg-white rounded-lg border border-emerald-100 text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-emerald-950">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Histórico de Backups Anteriores</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 pl-5">
-                    Todos os arquivos ZIP gerados anteriormente em disco permanecerão intactos.
-                  </p>
-                </div>
-
-                {/* Categorias Não Selecionadas */}
-                {CATEGORIES.filter((c) => !selectedCategories.includes(c.id)).map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="p-2.5 bg-white rounded-lg border border-emerald-100 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between font-bold text-emerald-950">
-                      <div className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{cat.name}</span>
-                      </div>
-                      <span className="text-[11px] font-mono text-emerald-800">
-                        {cat.getCountLabel()}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 pl-5">{cat.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* AVISO DO BACKUP AUTOMÁTICO PRÉVIO OBRIGATÓRIO */}
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2.5 text-xs text-blue-900">
-            <FileArchive className="w-4 h-4 text-blue-600 shrink-0" />
-            <div>
-              <span className="font-bold">Backup de Segurança Automático Obrigatório:</span> Antes de efetuar qualquer exclusão, o servidor gerará automaticamente um arquivo ZIP contendo todo o estado do sistema e validará sua integridade em disco. Se o backup falhar, a operação será cancelada e nenhum dado será apagado.
-            </div>
-          </div>
-
-          {/* Mensagem de Erro (se houver) */}
-          {clearErrorMsg && (
-            <Alert variant="error" title="Não foi possível concluir a limpeza">
-              {clearErrorMsg}
-            </Alert>
-          )}
-
-          {/* Campo de Confirmação Textual */}
-          <div className="space-y-2 pt-1">
-            <label className="block text-xs font-semibold text-slate-800">
-              Digite <span className="font-mono font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">LIMPAR PRODUÇÃO</span> para confirmar:
-            </label>
+          <FormField label="Novo E-mail de Acesso" required>
             <input
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              disabled={isClearing}
-              placeholder="LIMPAR PRODUÇÃO"
-              autoComplete="off"
-              spellCheck="false"
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
+              type="email"
+              required
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="novo.email@escola.gov.br"
+              className={inputClasses}
             />
-          </div>
+          </FormField>
 
-          {/* Estado de Processamento Progressivo */}
-          {isClearing && (
-            <div className="p-3.5 bg-slate-900 text-white rounded-lg flex items-center gap-3 text-xs animate-in fade-in">
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-              <span className="font-medium">{clearingStep || 'Processando manutenção do sistema...'}</span>
-            </div>
-          )}
+          <FormField label="Senha Atual (Confirmação)" required>
+            <input
+              type="password"
+              required
+              value={emailCurrentPassword}
+              onChange={(e) => setEmailCurrentPassword(e.target.value)}
+              placeholder="Digite sua senha atual"
+              className={inputClasses}
+            />
+          </FormField>
 
-          {/* Ações do Modal */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
             <Button
               type="button"
-              variant="secondary"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEmailModalOpen(false)}
+              disabled={isSavingEmail}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isSavingEmail}
+              disabled={isSavingEmail}
+              icon={Check}
+            >
+              Confirmar e Salvar
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL DE CONFIRMAÇÃO DA LIMPEZA SELETIVA */}
+      <Modal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        title="Confirmar Limpeza Seletiva"
+        size="md"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Atenção: Ação irreversível!</span>
+              <span>
+                Um backup completo (.ZIP) será gerado automaticamente antes da exclusão. As credenciais administrativas e esta conta não serão afetadas.
+              </span>
+            </div>
+          </div>
+
+          <p className="text-slate-700">
+            Para autorizar a remoção de <strong>{selectedCategories.length}</strong> categoria(s), digite <strong>EXCLUIR</strong> abaixo:
+          </p>
+
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="Digite EXCLUIR"
+            className={inputClasses}
+          />
+
+          {clearErrorMsg && (
+            <p className="text-rose-600 font-semibold">{clearErrorMsg}</p>
+          )}
+
+          {clearingStep && (
+            <p className="text-blue-600 font-medium animate-pulse">{clearingStep}</p>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
               size="sm"
               onClick={() => setIsConfirmModalOpen(false)}
               disabled={isClearing}
@@ -1316,13 +968,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               type="button"
               variant="danger"
               size="sm"
-              icon={Trash2}
-              onClick={handleExecuteClear}
+              disabled={confirmText.trim().toUpperCase() !== 'EXCLUIR' || isClearing}
               isLoading={isClearing}
-              disabled={confirmText !== 'LIMPAR PRODUÇÃO' || isClearing || selectedCategories.length === 0 || isBlockedByIntegrity}
-              className="font-bold"
+              onClick={handleExecuteSelectiveClear}
+              icon={Trash2}
             >
-              Confirmar e limpar
+              Confirmar Exclusão
             </Button>
           </div>
         </div>
@@ -1330,24 +981,3 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     </div>
   );
 };
-
-function LayoutModelIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect width="18" height="18" x="3" y="3" rx="2" />
-      <path d="M3 9h18" />
-      <path d="M9 21V9" />
-    </svg>
-  );
-}

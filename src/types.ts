@@ -364,6 +364,23 @@ export interface AdminProfile {
   role: string;
 }
 
+export interface UserPreferences {
+  confirmCriticalActions?: boolean;
+  notifyBackups?: boolean;
+  uppercaseNames?: boolean;
+}
+
+export interface UserProfile {
+  email: string;
+  displayName: string;
+  role: string; // 'Administrador' | 'Operador'
+  avatarUrl?: string | null;
+  department?: string;
+  preferences?: UserPreferences;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type ActiveTab = 
   | 'students'
   | 'collaborators'

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SchoolConfig } from '../types';
 import { School, Search, LogOut, User, ShieldCheck, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getLocalUserProfile } from '../utils/userProfile';
 
 interface HeaderProps {
   config: SchoolConfig;
@@ -22,11 +23,33 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { adminEmail, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [profile, setProfile] = useState(() => getLocalUserProfile(adminEmail));
+
+  useEffect(() => {
+    setProfile(getLocalUserProfile(adminEmail));
+
+    const handleProfileUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setProfile(customEvent.detail);
+      } else {
+        setProfile(getLocalUserProfile(adminEmail));
+      }
+    };
+
+    window.addEventListener('auth:profile_updated', handleProfileUpdated);
+    return () => {
+      window.removeEventListener('auth:profile_updated', handleProfileUpdated);
+    };
+  }, [adminEmail]);
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
     await logout();
   };
+
+  const displayName = profile.displayName || adminEmail?.split('@')[0] || 'Admin';
+  const roleLabel = profile.role || 'Administrador';
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white px-4 sm:px-6 py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shrink-0 w-full">
@@ -75,48 +98,73 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* Right Controls: Period Indicator + Admin Badge + Settings + Logout */}
+      {/* Right Controls: Period Indicator + Admin Badge/Avatar + Settings + Logout (Harmonized h-9) */}
       <div className="flex items-center gap-2 text-xs">
         {currentPeriodName && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300">
-            <span className="text-[11px] text-slate-400">Período ativo:</span>
+          <div className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-300">
+            <span className="text-[11px] text-slate-400">Período:</span>
             <span className="font-semibold text-white">{currentPeriodName}</span>
           </div>
         )}
 
-        {/* Admin Account Button */}
+        {/* Admin Account Button / Avatar */}
         {onOpenAccountSettings ? (
           <button
             type="button"
             onClick={onOpenAccountSettings}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Gerenciar Conta Administrativa"
+            className="h-9 flex items-center gap-2 px-2.5 sm:px-3 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white transition-all duration-150 cursor-pointer group"
+            title="Gerenciar Minha Conta"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-            <span className="font-medium max-w-[140px] truncate">{adminEmail || 'Admin'}</span>
+            {profile.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={displayName}
+                className="w-5 h-5 rounded-full object-cover border border-blue-400/40 shrink-0"
+              />
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </div>
+            )}
+            <span className="font-medium max-w-[120px] sm:max-w-[140px] truncate">
+              {displayName}
+            </span>
+            <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
+              {roleLabel === 'Operador' ? 'Operador' : 'Admin'}
+            </span>
           </button>
         ) : (
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300">
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-            <span className="font-medium max-w-[140px] truncate">{adminEmail || 'Admin'}</span>
+          <div className="h-9 flex items-center gap-2 px-2.5 sm:px-3 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-300">
+            {profile.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={displayName}
+                className="w-5 h-5 rounded-full object-cover border border-blue-400/40 shrink-0"
+              />
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </div>
+            )}
+            <span className="font-medium max-w-[120px] truncate">{displayName}</span>
           </div>
         )}
 
-        {/* Settings Button - Discreto, elegante, com acabamento refinado */}
+        {/* Settings Button - Padronizado: h-9 w-9, ícone w-5 h-5, cantos rounded-lg idênticos aos vizinhos */}
         {onOpenSettings && (
           <button
             type="button"
             onClick={onOpenSettings}
-            className={`relative p-2 rounded-lg border transition-all duration-200 cursor-pointer group flex items-center justify-center ${
+            className={`h-9 w-9 rounded-lg border transition-all duration-150 cursor-pointer group flex items-center justify-center shrink-0 ${
               isSettingsActive
                 ? 'bg-blue-600 border-blue-500 text-white shadow-xs'
-                : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:border-slate-600'
+                : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white'
             }`}
             title="Configurações do Sistema"
             aria-label="Configurações do Sistema"
           >
             <Settings
-              className={`w-4 h-4 transition-transform duration-500 ease-out group-hover:rotate-90 ${
+              className={`w-5 h-5 transition-transform duration-300 ease-out group-hover:rotate-45 ${
                 isSettingsActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'
               }`}
             />
@@ -127,10 +175,10 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           type="button"
           onClick={() => setShowLogoutConfirm(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60 transition-colors cursor-pointer text-xs"
+          className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-slate-800/80 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700/80 hover:border-rose-800/60 transition-all duration-150 cursor-pointer text-xs shrink-0"
           title="Encerrar sessão (Sair do sistema)"
         >
-          <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-400" />
+          <LogOut className="w-4 h-4 text-slate-400 group-hover:text-rose-400 shrink-0" />
           <span className="font-medium">Sair</span>
         </button>
       </div>

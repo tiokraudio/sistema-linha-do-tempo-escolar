@@ -52,6 +52,8 @@ import {
   revokeSession,
   updateAdminEmail,
   updateAdminPassword,
+  getAdminProfile,
+  updateAdminProfile,
   requireAuth,
 } from './server/authService';
 
@@ -463,10 +465,47 @@ async function startServer() {
 
   // Obter dados da conta administrativa autenticada
   app.get('/api/auth/me', requireAuth, (req, res) => {
+    const profile = getAdminProfile();
     res.json({
-      email: getAdminEmail(),
-      role: 'ADMIN',
+      email: profile?.email || getAdminEmail(),
+      role: profile?.role || 'ADMIN',
+      displayName: profile?.displayName || 'Administrador',
+      avatarUrl: profile?.avatarUrl || null,
     });
+  });
+
+  // Obter perfil completo da conta administrativa autenticada
+  app.get('/api/auth/profile', requireAuth, (req, res) => {
+    const profile = getAdminProfile();
+    res.json(
+      profile || {
+        email: getAdminEmail() || '',
+        displayName: 'Administrador Geral',
+        role: 'Administrador',
+        avatarUrl: null,
+        department: 'Gestão Escolar & Secretaria',
+        preferences: {
+          confirmCriticalActions: true,
+          notifyBackups: true,
+          uppercaseNames: true,
+        },
+      }
+    );
+  });
+
+  // Atualizar perfil administrativo (nome, cargo, departamento, foto, preferências)
+  app.put('/api/auth/profile', requireAuth, (req, res) => {
+    try {
+      const { displayName, role, avatarUrl, department, preferences } = req.body;
+      const updated = updateAdminProfile({ displayName, role, avatarUrl, department, preferences });
+      res.json({
+        success: true,
+        profile: updated,
+        message: 'Perfil administrativo atualizado com sucesso.',
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Erro ao atualizar perfil.' });
+    }
   });
 
   // Alteração de e-mail administrativo (valida formato e senha atual)
@@ -2675,9 +2714,10 @@ async function startServer() {
   // Limpeza Seletiva Segura de Dados do Sistema (Minha Conta -> Manutenção do Sistema)
   app.post('/api/maintenance/clear-production-data', async (req, res) => {
     try {
-      if (req.body?.confirmation !== 'LIMPAR PRODUÇÃO') {
+      const confirmation = typeof req.body?.confirmation === 'string' ? req.body.confirmation.trim().toUpperCase() : '';
+      if (confirmation !== 'EXCLUIR' && confirmation !== 'LIMPAR PRODUÇÃO') {
         return res.status(400).json({
-          error: 'Confirmação textual obrigatória ausente ou incorreta. Digite exatamente "LIMPAR PRODUÇÃO" para autorizar a operação.',
+          error: 'Confirmação textual obrigatória ausente ou incorreta. Digite exatamente "EXCLUIR" para autorizar a operação.',
         });
       }
 

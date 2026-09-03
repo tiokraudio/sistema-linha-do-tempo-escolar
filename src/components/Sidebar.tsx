@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ActiveTab } from '../types';
 import { Users, Briefcase, Camera, Clock, LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getLocalUserProfile } from '../utils/userProfile';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -11,6 +12,25 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpenAccountSettings }) => {
   const { adminEmail, logout } = useAuth();
+  const [profile, setProfile] = useState(() => getLocalUserProfile(adminEmail));
+
+  useEffect(() => {
+    setProfile(getLocalUserProfile(adminEmail));
+
+    const handleProfileUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setProfile(customEvent.detail);
+      } else {
+        setProfile(getLocalUserProfile(adminEmail));
+      }
+    };
+
+    window.addEventListener('auth:profile_updated', handleProfileUpdated);
+    return () => {
+      window.removeEventListener('auth:profile_updated', handleProfileUpdated);
+    };
+  }, [adminEmail]);
 
   // 1. CADASTRO
   const cadastroGroup = [
@@ -119,15 +139,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
             className="flex items-center gap-2 min-w-0 text-left hover:text-white transition-colors cursor-pointer group"
             title="Abrir Minha Conta"
           >
-            <div className="w-6 h-6 rounded-md bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:text-blue-300 shrink-0">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
+            {profile.avatarUrl ? (
+              <img
+                src={profile.avatarUrl}
+                alt={profile.displayName || 'Avatar'}
+                className="w-6 h-6 rounded-full object-cover border border-blue-500/30 shrink-0"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-md bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:text-blue-300 shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </div>
+            )}
             <div className="min-w-0">
               <div className="text-[11px] font-semibold text-slate-200 truncate">
-                {adminEmail || 'Administrador'}
+                {profile.displayName || adminEmail || 'Administrador'}
               </div>
               <div className="text-[9px] text-slate-400 uppercase tracking-wider">
-                Admin
+                {profile.role || 'Admin'}
               </div>
             </div>
           </button>
