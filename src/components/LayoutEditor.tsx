@@ -66,7 +66,10 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
   function ensureConfigs(m: LayoutModel): LayoutModel {
     const configs = ensureModelConfigurations(m.configurations || [], slotsCount);
-    return { ...m, configurations: configs };
+    const studentNamePos: TextElementPosition = m.studentNamePosition
+      ? { ...m.studentNamePosition, fontSizePx: 30 }
+      : { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+    return { ...m, configurations: configs, studentNamePosition: studentNamePos };
   }
 
   const [formData, setFormData] = useState<LayoutModel | null>(() => {
@@ -198,7 +201,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
       return { pos: { xPercent: pos.xPercent ?? 0, yPercent: pos.yPercent ?? 97, widthPercent: pos.widthPercent ?? 100, heightPercent: pos.heightPercent ?? 2 } };
     }
     if (id === 'studentName') {
-      const pos = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+      const pos = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
       return { pos: { xPercent: pos.xPercent ?? 0, yPercent: pos.yPercent ?? 86, widthPercent: pos.widthPercent ?? 100, heightPercent: pos.heightPercent ?? 5 } };
     }
     if (id === 'studentRegistration') {
@@ -232,7 +235,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
       const current = formData.schoolNamePosition || { xPercent: 0, yPercent: 97, widthPercent: 100, heightPercent: 2, fontSizePx: 12, color: '#ffffff', align: 'center', fontWeight: 'bold' };
       setFormData({ ...formData, schoolNamePosition: { ...current, ...updates } });
     } else if (id === 'studentName') {
-      const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+      const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
       setFormData({ ...formData, studentNamePosition: { ...current, ...updates } });
     } else if (id === 'studentRegistration') {
       const current = formData.studentRegistrationPosition || { show: true, xPercent: 50, yPercent: 48, widthPercent: 60, heightPercent: 4, fontSizePx: 12, color: '#475569', align: 'center' };
@@ -1069,10 +1072,11 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
               >
                 <div
                   style={{
-                    fontSize: `${(formData.studentNamePosition?.fontSizePx ?? 24) * fontScale}px`,
+                    fontSize: `${(formData.studentNamePosition?.fontSizePx ?? 30) * fontScale}px`,
                     color: formData.studentNamePosition?.color || '#ffffff',
                     textAlign: formData.studentNamePosition?.align || 'center',
                     fontWeight: formData.studentNamePosition?.fontWeight || 'bold',
+                    fontFamily: formData.studentNamePosition?.fontFamily || formData.fontFamily || "'Montserrat', sans-serif",
                   }}
                   className="w-full uppercase tracking-tight font-bold leading-tight"
                 >
@@ -1566,12 +1570,10 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   <FormField label="Tamanho (px)">
                     <input
                       type="number"
-                      value={formData.studentNamePosition?.fontSizePx ?? 24}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10) || 10;
-                        const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
-                        setFormData({ ...formData, studentNamePosition: { ...current, fontSizePx: val } });
-                      }}
+                      value={formData.studentNamePosition?.fontSizePx ?? 30}
+                      disabled
+                      readOnly
+                      title="O tamanho da fonte do nome na Linha do Tempo é padronizado em 30px."
                       className={compactInputClasses}
                     />
                   </FormField>
@@ -1584,7 +1586,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         type="color"
                         value={formData.studentNamePosition?.color || '#ffffff'}
                         onChange={(e) => {
-                          const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                          const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                           setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
                         }}
                         className="w-8 h-8 rounded border border-slate-200 p-0.5 cursor-pointer shrink-0"
@@ -1593,7 +1595,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                         type="text"
                         value={formData.studentNamePosition?.color || '#ffffff'}
                         onChange={(e) => {
-                          const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                          const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                           setFormData({ ...formData, studentNamePosition: { ...current, color: e.target.value } });
                         }}
                         className={compactInputClasses}
@@ -1608,7 +1610,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                           key={`student_align_${alignOpt}`}
                           type="button"
                           onClick={() => {
-                            const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 24, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                            const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
                             setFormData({ ...formData, studentNamePosition: { ...current, align: alignOpt } });
                           }}
                           className={`h-8 px-1 text-xs font-medium rounded border transition-colors cursor-pointer flex items-center justify-center gap-1 ${

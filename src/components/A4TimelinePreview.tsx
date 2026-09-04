@@ -185,6 +185,20 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const baseWidth = 794;
   const baseHeight = 1123;
 
+  // Observa o carregamento de fontes web para re-medir no Canvas 2D com métricas reais após download
+  const [, setFontsLoaded] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+      let isMounted = true;
+      document.fonts.ready.then(() => {
+        if (isMounted) setFontsLoaded(true);
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, []);
+
   // Resolve Primary Item (main highlight photo) and Secondary Items (photographic history trajectory slots)
   const primaryIndex = photoItems.findIndex((p) => p.isPrimary);
   const realPrimaryIndex = primaryIndex !== -1 ? primaryIndex : (photoItems.length > 0 ? 0 : -1);
@@ -237,7 +251,9 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const modelNameFontSize = 30; // Padrão oficial fixado em 30px
   const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
   const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
-  const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} 30px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
+  const nameFontWeight = model.studentNamePosition?.fontWeight || 'bold';
+  const nameFontFamily = model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif";
+  const nameFont = `${nameFontWeight} 30px ${nameFontFamily}`;
   const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 3);
 
   return (
@@ -498,8 +514,8 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
             lineHeight: modelNameLineHeight,
             color: model.studentNamePosition?.color || '#ffffff',
             textAlign: model.studentNamePosition?.align || 'center',
-            fontWeight: model.studentNamePosition?.fontWeight || 'bold',
-            fontFamily: model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif",
+            fontWeight: nameFontWeight,
+            fontFamily: nameFontFamily,
             textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.7)',
             zIndex: 50,
             paddingLeft: '2%',

@@ -235,10 +235,14 @@ function loadData(): LocalStorageData {
         return migrateDefaultLayoutModel(m, photoHistorySlots);
       }
       const configs = ensureModelConfigurations(m.configurations || [], photoHistorySlots);
+      const studentNamePosition = m.studentNamePosition
+        ? { ...m.studentNamePosition, fontSizePx: 30 }
+        : defaultModelRef.studentNamePosition;
       return {
         ...m,
         configurations: configs,
         primaryPhotoPosition: m.primaryPhotoPosition || defaultModelRef.primaryPhotoPosition,
+        studentNamePosition,
       };
     });
   }
