@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime data & uploads
+data/storage.json
+data/storage.json.*
+data/auth.json
+data/backups/
+data/uploads/
+*.zip
+*.tar.gz

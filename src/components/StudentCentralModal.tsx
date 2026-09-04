@@ -17,14 +17,13 @@ import {
   Sparkles,
   ZoomIn,
   Check,
-  ChevronDown,
-  ChevronRight,
   Image as ImageIcon,
-  FileText,
-  UserCheck,
   Copy,
   Calendar,
   IdCard,
+  Crop,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
 import {
@@ -37,6 +36,7 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Toast } from './ui/Toast';
 import { Alert } from './ui/Alert';
+import { AdjustPhotoModal } from './AdjustPhotoModal';
 
 export interface StudentCentralModalProps {
   isOpen: boolean;
@@ -63,6 +63,16 @@ export interface StudentCentralModalProps {
     photoUrl: string,
     cropSettings?: CropSettings
   ) => Promise<any>;
+  onUpdateRecordCrops?: (
+    recordId: string,
+    crops: {
+      timelinePrimaryCrop?: CropSettings;
+      timelineSecondaryCrop?: CropSettings;
+      carometroCrop?: CropSettings;
+      carometroCircularCrop?: CropSettings;
+    }
+  ) => Promise<any>;
+  onDeleteRecord?: (recordId: string) => Promise<any>;
 }
 
 export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
@@ -75,6 +85,8 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   classes: _classes = [],
   onClose,
   onUpdateRecordPhoto,
+  onUpdateRecordCrops,
+  onDeleteRecord,
 }) => {
   if (!isOpen || !student) return null;
 
@@ -157,15 +169,6 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   // Registro mais recente do aluno
   const latestRecord = trajectory.primaryRecord;
 
-  // Estados de expansão/recolhimento controlados por período
-  // Por padrão: todos os períodos iniciam recolhidos
-  const [expandedTrajectoryYears, setExpandedTrajectoryYears] = useState<Record<string, boolean>>({});
-
-  // Resetar expansão quando o aluno mudar ou o modal for reaberto
-  useEffect(() => {
-    setExpandedTrajectoryYears({});
-  }, [student.id]);
-
   // Estado para visualização ampliada (Lightbox) da fotografia
   const [enlargedPhoto, setEnlargedPhoto] = useState<{
     url: string;
@@ -174,13 +177,12 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
     className: string;
   } | null>(null);
 
-  const toggleTrajectoryPeriod = (year: string | number) => {
-    const key = String(year);
-    setExpandedTrajectoryYears((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
+  // Estados para exclusão e ajuste de enquadramento
+  const [recordToDelete, setRecordToDelete] = useState<AcademicYearRecord | null>(null);
+  const [isDeletingRecord, setIsDeletingRecord] = useState(false);
+  const [adjustingRecord, setAdjustingRecord] = useState<AcademicYearRecord | null>(null);
+  const quickUploadRecordRef = useRef<AcademicYearRecord | null>(null);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
 
   const formatDate = (isoString?: string) => {
     if (!isoString) return '—';
@@ -301,6 +303,78 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
     setModalPhotoUrl(rec.photoUrl || '');
     setModalCropSettings(rec.cropSettings || { x: 50, y: 50, zoom: 1.0 });
     setPhotoModalErrorMsg('');
+  };
+
+  const handleQuickUploadClick = (rec: AcademicYearRecord) => {
+    const isCurrent = String(rec.year) === String(currentAcademicPeriodName);
+    if (!isCurrent) return;
+
+    const hasPhoto = Boolean(rec.photoUrl && rec.photoUrl.trim());
+    if (!hasPhoto) {
+      quickUploadRecordRef.current = rec;
+      if (quickFileInputRef.current) {
+        quickFileInputRef.current.value = '';
+        quickFileInputRef.current.click();
+      }
+    } else {
+      handleOpenPhotoModal(rec);
+    }
+  };
+
+  const handleQuickFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetRec = quickUploadRecordRef.current;
+    if (file && targetRec) {
+      if (file.size > 30 * 1024 * 1024) {
+        setPhotoModalErrorMsg('A imagem é muito grande. Escolha uma foto de até 30MB.');
+        setPhotoModalRecord(targetRec);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const result = event.target?.result as string;
+        setPhotoModalRecord(targetRec);
+        setModalPhotoUrl(result);
+        setModalCropSettings({ x: 50, y: 50, zoom: 1.0 });
+        setPhotoModalErrorMsg('');
+        try {
+          const detected = await autoDetectFaceCrop(result);
+          setModalCropSettings(detected);
+        } catch {}
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  const handleConfirmDeleteRecord = async () => {
+    if (!recordToDelete) return;
+    setIsDeletingRecord(true);
+    const targetRec = recordToDelete;
+    const deletedYear = String(targetRec.year);
+    try {
+      if (onDeleteRecord) {
+        await onDeleteRecord(targetRec.id);
+      } else {
+        const res = await apiFetch(`/api/records/${targetRec.id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Erro ao excluir matrícula.');
+        }
+      }
+      setSuccessToast(
+        isCollaborator
+          ? `Período ${deletedYear} excluído com sucesso.`
+          : `Matrícula do período ${deletedYear} excluída com sucesso.`
+      );
+      setRecordToDelete(null);
+    } catch (err: any) {
+      setSuccessToast(err?.message || 'Erro ao excluir período.');
+    } finally {
+      setIsDeletingRecord(false);
+    }
   };
 
   const handleClosePhotoModal = () => {
@@ -547,7 +621,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
         {/* ================================================== */}
         <div className="overflow-y-auto flex-1 p-6 space-y-6 text-slate-700">
           {/* ================================================== */}
-          {/* MATRÍCULAS / PERÍODOS E HISTÓRICO (EXPANSÍVEL / RECOLHÍVEL - ORDEM DESC) */}
+          {/* MATRÍCULAS / PERÍODOS E HISTÓRICO (LINHA ÚNICA COMPACTA - ORDEM DESC) */}
           {/* ================================================== */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -559,6 +633,15 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
               </span>
             </div>
 
+            {/* Input oculto para upload direto ao clicar no botão da linha */}
+            <input
+              ref={quickFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleQuickFileSelected}
+              className="hidden"
+            />
+
             {displayRecords.length === 0 ? (
               <div className="py-6 text-center text-slate-400 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                 {isCollaborator
@@ -566,286 +649,178 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                   : 'Nenhuma matrícula confirmada para este aluno.'}
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {displayRecords.map((rec) => {
                   const key = String(rec.year);
                   const isCurrent = key === currentAcademicPeriodName;
-                  const isExpanded = Boolean(expandedTrajectoryYears[key]);
                   const hasPhoto = Boolean(rec.photoUrl && rec.photoUrl.trim());
-
-                  // Verifica se existe composição salva na Linha do Tempo para este período
-                  const timelineForPeriod = timelines?.find(
-                    (t) =>
-                      (t.studentId === student.id || (student.enrollment && t.studentEnrollment === student.enrollment)) &&
-                      String(t.year) === key
-                  );
-
-                  // Verifica ajuste do Carômetro
-                  const hasCarometroAdjustment = Boolean(
-                    rec.carometroCrop ||
-                      (rec.cropSettings && (rec.cropSettings.zoom !== 1.0 || rec.cropSettings.x !== 50 || rec.cropSettings.y !== 50))
-                  );
 
                   return (
                     <div
                       key={rec.id || key}
-                      className="border border-slate-200 rounded-xl bg-white overflow-hidden transition-all shadow-xs"
+                      className="flex items-center justify-between py-2 px-3 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 transition-colors shadow-2xs gap-3"
                     >
-                      {/* Cabeçalho do Período (Acordeão) */}
-                      <button
-                        type="button"
-                        onClick={() => toggleTrajectoryPeriod(rec.year)}
-                        className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50/75 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                          <span className="text-slate-400 shrink-0">
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4 text-slate-600" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-slate-400" />
-                            )}
-                          </span>
+                      {/* Esquerda / Centro: Miniatura + Identificação Período e Turma */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {/* Miniatura da Foto */}
+                        {hasPhoto ? (
+                          <div
+                            onClick={() =>
+                              setEnlargedPhoto({
+                                url: rec.photoUrl!,
+                                studentName: student.name,
+                                year: rec.year,
+                                className: rec.className,
+                              })
+                            }
+                            className="group relative w-10 h-10 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0 cursor-pointer shadow-2xs hover:ring-2 hover:ring-blue-500/50 transition-all"
+                            title="Clique para ampliar a fotografia"
+                          >
+                            <img
+                              src={rec.photoUrl}
+                              alt={`Foto ${rec.year} - ${student.name}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/25 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <ZoomIn className="w-3.5 h-3.5" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-lg bg-slate-100 border border-dashed border-slate-300 shrink-0 flex items-center justify-center text-slate-400"
+                            title="Sem fotografia vinculada"
+                          >
+                            <Camera className="w-4 h-4 text-slate-400" />
+                          </div>
+                        )}
 
-                          <span className="font-mono font-bold text-slate-900 text-sm">
+                        {/* Identificação do Período & Turma */}
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="font-mono font-bold text-slate-900 text-sm tracking-tight">
                             {rec.year}
                           </span>
                           {!isCollaborator && rec.className && (
                             <>
-                              <span className="text-slate-300">·</span>
-                              <span className="font-semibold text-slate-800 text-sm truncate">
+                              <span className="text-slate-300 select-none">·</span>
+                              <span className="font-semibold text-slate-700 text-xs sm:text-sm truncate">
                                 {rec.className}
                               </span>
                             </>
                           )}
-                          {isCurrent && (
-                            <Badge variant="info" size="sm">
+                          {isCurrent ? (
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md">
                               Atual
-                            </Badge>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md hidden sm:inline-block">
+                              Histórico
+                            </span>
                           )}
                         </div>
+                      </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Badge variant="success" size="sm">
-                            {isCollaborator ? 'Período confirmado' : 'Matrícula confirmada'}
-                          </Badge>
-                        </div>
-                      </button>
+                      {/* Extremidade Direita: Barra de Ações Rápidas em formato compacto sem quebras */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* 1. Adicionar / Alterar Foto */}
+                        <button
+                          type="button"
+                          onClick={() => handleQuickUploadClick(rec)}
+                          disabled={!isCurrent}
+                          title={
+                            isCurrent
+                              ? hasPhoto
+                                ? 'Alterar fotografia'
+                                : 'Adicionar fotografia (upload direto)'
+                              : 'Edição de foto permitida apenas no período atual'
+                          }
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            !isCurrent
+                              ? 'text-slate-300 border border-slate-100 cursor-not-allowed'
+                              : hasPhoto
+                              ? 'text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 cursor-pointer'
+                              : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 cursor-pointer'
+                          }`}
+                        >
+                          {hasPhoto ? <Camera className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                        </button>
 
-                      {/* Conteúdo do Período Expandido: 1 linha com 3 colunas (FOTOGRAFIA | LINHA DO TEMPO | CARÔMETRO) */}
-                      {/* Renderizado sob demanda para garantir alta performance mesmo com múltiplos anos históricos */}
-                      {isExpanded && (
-                        <div className="px-4 py-4 border-t border-slate-100 bg-slate-50/50 text-xs">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                            {/* 1. COLUNA FOTOGRAFIA */}
-                            <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between space-y-3">
-                              <div className="space-y-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-                                    Fotografia
-                                  </span>
-                                  {hasPhoto ? (
-                                    <Badge variant="success" size="sm">
-                                      Disponível
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="neutral" size="sm">
-                                      Pendente
-                                    </Badge>
-                                  )}
-                                </div>
+                        {/* 2. Ampliar / Prévia */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            hasPhoto &&
+                            setEnlargedPhoto({
+                              url: rec.photoUrl!,
+                              studentName: student.name,
+                              year: rec.year,
+                              className: rec.className,
+                            })
+                          }
+                          disabled={!hasPhoto}
+                          title={hasPhoto ? 'Ampliar fotografia' : 'Nenhuma fotografia para visualizar'}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            hasPhoto
+                              ? 'text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 cursor-pointer'
+                              : 'text-slate-300 border border-slate-100 cursor-not-allowed'
+                          }`}
+                        >
+                          <ZoomIn className="w-4 h-4" />
+                        </button>
 
-                                <div className="flex items-center gap-3 pt-0.5">
-                                  {hasPhoto ? (
-                                    <div
-                                      onClick={() =>
-                                        setEnlargedPhoto({
-                                          url: rec.photoUrl!,
-                                          studentName: student.name,
-                                          year: rec.year,
-                                          className: rec.className,
-                                        })
-                                      }
-                                      className="group relative w-16 h-20 rounded-lg bg-slate-100 overflow-hidden border border-slate-300 shrink-0 cursor-pointer shadow-2xs hover:ring-2 hover:ring-blue-500/60 transition-all"
-                                      title="Clique para ampliar a fotografia"
-                                    >
-                                      <img
-                                        src={rec.photoUrl}
-                                        alt={`Foto ${rec.year} - ${student.name}`}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                      <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                                        <ZoomIn className="w-4 h-4" />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="w-16 h-20 rounded-lg bg-slate-100 border border-dashed border-slate-300 shrink-0 flex flex-col items-center justify-center text-slate-400">
-                                      <Camera className="w-5 h-5 mb-1 text-slate-300" />
-                                      <span className="text-[9px] font-medium text-slate-400">Sem foto</span>
-                                    </div>
-                                  )}
+                        {/* 3. Baixar Original */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            hasPhoto &&
+                            handleDownloadOriginalPhoto({
+                              year: rec.year,
+                              className: rec.className,
+                              photoUrl: rec.photoUrl,
+                            })
+                          }
+                          disabled={!hasPhoto}
+                          title={hasPhoto ? `Baixar foto original (${rec.year})` : 'Nenhuma fotografia para download'}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            hasPhoto
+                              ? 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-200 cursor-pointer'
+                              : 'text-slate-300 border border-slate-100 cursor-not-allowed'
+                          }`}
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
 
-                                  <div className="space-y-1 flex-1 min-w-0">
-                                    <p className="text-[11px] font-medium text-slate-700 leading-tight truncate">
-                                      {hasPhoto ? 'Fotografia registrada' : 'Nenhuma foto vinculada'}
-                                    </p>
-                                    <p className="text-[10px] text-slate-400 leading-snug">
-                                      {hasPhoto ? `Foto oficial do período letivo ${rec.year}` : 'Faça upload no período atual'}
-                                    </p>
-                                    {hasPhoto && (
-                                      <span className="text-[10px] text-blue-600 font-medium cursor-pointer hover:underline inline-block"
-                                        onClick={() =>
-                                          setEnlargedPhoto({
-                                            url: rec.photoUrl!,
-                                            studentName: student.name,
-                                            year: rec.year,
-                                            className: rec.className,
-                                          })
-                                        }
-                                      >
-                                        Ampliar foto
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
+                        {/* 4. Ajustar Enquadramento / Crop */}
+                        <button
+                          type="button"
+                          onClick={() => isCurrent && hasPhoto && setAdjustingRecord(rec)}
+                          disabled={!isCurrent || !hasPhoto}
+                          title={
+                            !isCurrent
+                              ? 'Ajuste disponível apenas para o período letivo atual'
+                              : !hasPhoto
+                              ? 'Nenhuma fotografia para ajustar'
+                              : `Ajustar enquadramento e recorte (${rec.year})`
+                          }
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            isCurrent && hasPhoto
+                              ? 'text-slate-600 hover:text-amber-600 hover:bg-amber-50 border border-slate-200 cursor-pointer'
+                              : 'text-slate-300 border border-slate-100 cursor-not-allowed opacity-50'
+                          }`}
+                        >
+                          <Crop className="w-4 h-4" />
+                        </button>
 
-                              {/* Ações da Fotografia */}
-                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 pt-2 border-t border-slate-100">
-                                {hasPhoto && (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    icon={Download}
-                                    onClick={() =>
-                                      handleDownloadOriginalPhoto({
-                                        year: rec.year,
-                                        className: rec.className,
-                                        photoUrl: rec.photoUrl,
-                                      })
-                                    }
-                                    className="text-[11px] h-7 px-2 flex-1 justify-center"
-                                    title={`Baixar fotografia original de ${rec.year}`}
-                                  >
-                                    Baixar original
-                                  </Button>
-                                )}
-
-                                <Button
-                                  variant={hasPhoto ? 'secondary' : 'primary'}
-                                  size="sm"
-                                  icon={hasPhoto ? Camera : Upload}
-                                  disabled={!isCurrent}
-                                  onClick={() => isCurrent && handleOpenPhotoModal(rec)}
-                                  className="text-[11px] h-7 px-2 flex-1 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title={
-                                    isCurrent
-                                      ? hasPhoto
-                                        ? 'Alterar fotografia do período atual'
-                                        : 'Adicionar fotografia no período atual'
-                                      : 'Edição de fotografia permitida apenas no período letivo atual'
-                                  }
-                                >
-                                  {hasPhoto ? 'Alterar foto' : 'Adicionar foto'}
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* 2. COLUNA LINHA DO TEMPO */}
-                            <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between space-y-3">
-                              <div className="space-y-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <FileText className="w-3.5 h-3.5 text-slate-400" />
-                                    Linha do Tempo
-                                  </span>
-                                  {timelineForPeriod ? (
-                                    <Badge variant="success" size="sm">
-                                      Composição salva
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="neutral" size="sm">
-                                      Composição pendente
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                <div className="space-y-1.5 pt-0.5">
-                                  <p className="text-xs font-semibold text-slate-800">
-                                    {timelineForPeriod ? 'Composição gerada' : 'Aguardando composição'}
-                                  </p>
-                                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                                    {timelineForPeriod
-                                      ? `Registro salvo em ${formatDate(timelineForPeriod.createdAt || timelineForPeriod.updatedAt)}.`
-                                      : 'Nenhuma composição da Linha do Tempo salva para este período letivo.'}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-400">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                                <span>Consulta de status do período</span>
-                              </div>
-                            </div>
-
-                            {/* 3. COLUNA CARÔMETRO */}
-                            <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between space-y-3">
-                              <div className="space-y-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Sparkles className="w-3.5 h-3.5 text-slate-400" />
-                                    Carômetro
-                                  </span>
-                                  {hasCarometroAdjustment ? (
-                                    <Badge variant="success" size="sm">
-                                      Ajuste salvo
-                                    </Badge>
-                                  ) : rec.autoFaceCrop ? (
-                                    <Badge variant="info" size="sm">
-                                      Rosto identificado
-                                    </Badge>
-                                  ) : hasPhoto ? (
-                                    <Badge variant="neutral" size="sm">
-                                      Padrão
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="neutral" size="sm">
-                                      Pendente
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                <div className="space-y-1.5 pt-0.5">
-                                  <p className="text-xs font-semibold text-slate-800">
-                                    {hasCarometroAdjustment
-                                      ? 'Enquadramento personalizado'
-                                      : rec.autoFaceCrop
-                                      ? 'Detecção facial automática'
-                                      : hasPhoto
-                                      ? 'Enquadramento padrão'
-                                      : 'Aguardando foto'}
-                                  </p>
-                                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                                    {hasCarometroAdjustment
-                                      ? 'Recorte e zoom ajustados especificamente para a grade do Carômetro.'
-                                      : rec.autoFaceCrop
-                                      ? 'Rosto detectado e centralizado automaticamente.'
-                                      : hasPhoto
-                                      ? 'Utilizando enquadramento padrão centralizado da foto.'
-                                      : 'Sem fotografia para aplicar recorte do Carômetro.'}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10px] text-slate-400">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                                <span>Status do enquadramento no período</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        {/* 5. Excluir Matrícula / Registro */}
+                        <button
+                          type="button"
+                          onClick={() => setRecordToDelete(rec)}
+                          title={isCollaborator ? `Excluir período ${rec.year}` : `Excluir matrícula ${rec.year}`}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1168,6 +1143,119 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                     Baixar original
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================== */}
+        {/* MODAL DE AJUSTE DE ENQUADRAMENTO / CROP */}
+        {/* ================================================== */}
+        {adjustingRecord && (
+          <AdjustPhotoModal
+            isOpen={Boolean(adjustingRecord)}
+            student={student}
+            record={adjustingRecord}
+            isLocked={Boolean(
+              timelines &&
+              timelines.some(
+                (t) =>
+                  (t.studentId === student.id || (student.enrollment && t.studentEnrollment === student.enrollment)) &&
+                  String(t.year) === String(adjustingRecord.year)
+              )
+            )}
+            lockReason="Este período possui uma composição salva na Linha do Tempo e não pode ter o enquadramento alterado."
+            onSaveCrops={async (recordId, crops) => {
+              if (onUpdateRecordCrops) {
+                await onUpdateRecordCrops(recordId, crops);
+              } else {
+                const res = await apiFetch(`/api/records/${recordId}/crops`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(crops),
+                });
+                if (!res.ok) {
+                  const err = await res.json();
+                  throw new Error(err.error || 'Erro ao salvar enquadramento.');
+                }
+              }
+              setSuccessToast('Enquadramento salvo com sucesso.');
+              setAdjustingRecord(null);
+            }}
+            onClose={() => setAdjustingRecord(null)}
+          />
+        )}
+
+        {/* ================================================== */}
+        {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE MATRÍCULA / PERÍODO */}
+        {/* ================================================== */}
+        {recordToDelete && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-slate-900">
+                    {isCollaborator ? 'Excluir o período deste colaborador?' : 'Excluir a matrícula deste período?'}
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {isCollaborator
+                      ? 'Essa ação excluirá o período e a fotografia associada a este colaborador. Deseja continuar?'
+                      : 'Essa ação excluirá a matrícula e a fotografia associada a este período. Deseja continuar?'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs space-y-1.5">
+                <p className="text-slate-700">
+                  <span className="font-bold text-slate-500">{isCollaborator ? 'Colaborador:' : 'Aluno:'}</span>{' '}
+                  <strong className="text-slate-900">{student.name}</strong>{' '}
+                  <span className="font-mono text-slate-500">({student.enrollment})</span>
+                </p>
+                <p className="text-slate-700">
+                  <span className="font-bold text-slate-500">Período letivo:</span>{' '}
+                  <strong className="text-slate-900">{recordToDelete.year}</strong>
+                </p>
+                {!isCollaborator && recordToDelete.className && (
+                  <p className="text-slate-700">
+                    <span className="font-bold text-slate-500">Turma:</span>{' '}
+                    <strong className="text-slate-900">{recordToDelete.className}</strong>
+                  </p>
+                )}
+                {recordToDelete.photoUrl && (
+                  <p className="text-amber-700 text-[11px] font-medium pt-1">
+                    ⚠️ A fotografia deste período também será excluída permanentemente.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => {
+                    if (!isDeletingRecord) {
+                      setRecordToDelete(null);
+                    }
+                  }}
+                  disabled={isDeletingRecord}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="md"
+                  icon={Trash2}
+                  onClick={handleConfirmDeleteRecord}
+                  isLoading={isDeletingRecord}
+                  disabled={isDeletingRecord}
+                >
+                  {isDeletingRecord ? 'Excluindo...' : 'Excluir'}
+                </Button>
               </div>
             </div>
           </div>

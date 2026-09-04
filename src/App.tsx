@@ -62,6 +62,16 @@ function MainAppContent() {
     setIsCentralModalOpen(true);
   };
 
+  // Mantém os dados de centralStudent sincronizados após recarregamento do backend
+  useEffect(() => {
+    if (centralStudent) {
+      const updated = students.find((s) => s.id === centralStudent.id);
+      if (updated && updated !== centralStudent) {
+        setCentralStudent(updated);
+      }
+    }
+  }, [students, centralStudent]);
+
   // Global Search Modal (B.26)
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
 
@@ -1048,6 +1058,7 @@ function MainAppContent() {
           onConfirmStudentPeriod={handleConfirmStudentPeriod}
           onUpdateRecordPhoto={handleUpdateRecordPhoto}
           onUpdateRecordCrops={handleUpdateRecordCrops}
+          onDeleteRecord={handleDeleteRecord}
         />
       )}
 

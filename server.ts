@@ -57,7 +57,7 @@ import {
   requireAuth,
 } from './server/authService';
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'storage.json');
 

@@ -13,6 +13,9 @@ import {
   Trash2,
   AlertCircle,
   Crop,
+  Copy,
+  Check,
+  UserCheck,
 } from 'lucide-react';
 import {
   OFFICIAL_CLASSES,
@@ -83,7 +86,7 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
   const [recordToDelete, setRecordToDelete] = useState<AcademicYearRecord | null>(null);
   const [isDeletingRecord, setIsDeletingRecord] = useState(false);
   const [adjustingRecord, setAdjustingRecord] = useState<AcademicYearRecord | null>(null);
-  const [confirmedPageSize, setConfirmedPageSize] = useState<number>(5);
+  const [confirmedPageSize, setConfirmedPageSize] = useState<number>(10);
   const [confirmedCurrentPage, setConfirmedCurrentPage] = useState<number>(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevIsOpenRef = useRef(false);
@@ -119,6 +122,38 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
   }, [chronologicalRecords]);
 
   const isCollaborator = Boolean(student?.personType === 'collaborator');
+
+  // Copy name state
+  const [copiedName, setCopiedName] = useState(false);
+  const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCopyName = async () => {
+    if (!student?.name) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(student.name);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = student.name;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedName(true);
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedName(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Falha ao copiar nome:', err);
+    }
+  };
 
   // Total de páginas calculada dinamicamente
   const totalConfirmedPages = Math.max(
@@ -367,10 +402,32 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
             <h3 className="text-base font-semibold text-slate-900 uppercase">
               {isCollaborator ? 'REGISTRAR PERÍODO DO COLABORADOR' : 'CONFIRMAR MATRÍCULA'}
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5 truncate">
-              {student.name} · {isCollaborator ? 'Código / Matrícula' : 'Matrícula'}{' '}
-              <strong className="font-mono text-slate-700">{student.enrollment}</strong>
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500 flex-wrap">
+              <span className="font-semibold text-slate-800">{student.name}</span>
+              <button
+                type="button"
+                onClick={handleCopyName}
+                title={copiedName ? 'Copiado!' : 'Copiar nome completo'}
+                className="relative inline-flex items-center justify-center w-5 h-5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shrink-0"
+                aria-label="Copiar nome para a área de transferência"
+              >
+                {copiedName ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 animate-in zoom-in-75 duration-150" />
+                    <span className="absolute -top-7 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-slate-800 text-white text-[10px] font-medium rounded shadow-sm whitespace-nowrap pointer-events-none animate-in fade-in duration-150 z-30">
+                      Copiado!
+                    </span>
+                  </>
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <span>·</span>
+              <span>
+                {isCollaborator ? 'Código / Matrícula' : 'Matrícula'}{' '}
+                <strong className="font-mono text-slate-700">{student.enrollment}</strong>
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
@@ -412,7 +469,163 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
             <Alert variant="error">{confirmErrorMsg}</Alert>
           )}
 
-          {/* Resumo Informativo: Matrículas / Períodos confirmados */}
+          {/* HIERARQUIA SUPERIOR (AÇÃO IMEDIATA): Seção: Nova matrícula / Novo período */}
+          <div className="space-y-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                {isCollaborator ? 'Novo período letivo' : 'Nova matrícula'}
+              </span>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                {isCollaborator ? 'Colaborador' : 'Aluno'}: {student?.name}
+              </span>
+            </div>
+
+            {/* Linha com os campos: Período, Turma (se aluno) e Foto */}
+            <div className={`grid grid-cols-1 ${isCollaborator ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3.5 items-start`}>
+              {/* 1. Período Letivo */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Período letivo
+                </label>
+                <select
+                  value={confirmPeriod}
+                  onChange={(e) => {
+                    setConfirmPeriod(e.target.value);
+                    setConfirmSuccessMsg(null);
+                  }}
+                  disabled={confirmIsSubmitting}
+                  className="w-full h-10 bg-slate-50/50 hover:bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition-colors shadow-2xs"
+                  required
+                >
+                  <option value="">Selecione...</option>
+                  {[...availablePeriods]
+                    .sort((a, b) => Number(b.name) - Number(a.name))
+                    .map((p) => {
+                      const isAlreadyConfirmed = chronologicalRecords.some(
+                        (r) => String(r.year) === String(p.name)
+                      );
+                      const isActive = p.name === getActiveAcademicYear(periods);
+                      return (
+                        <option
+                          key={p.id}
+                          value={p.name}
+                        >
+                          {p.name} {isActive ? '(Período Ativo)' : ''} {isAlreadyConfirmed ? (isCollaborator ? '— (Já registrado)' : '— (Já matriculado)') : ''}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+
+              {/* 2. Turma (apenas para alunos) */}
+              {!isCollaborator && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Turma
+                  </label>
+                  <select
+                    value={confirmClass}
+                    onChange={(e) => {
+                      setConfirmClass(e.target.value);
+                      setConfirmSuccessMsg(null);
+                    }}
+                    disabled={confirmIsSubmitting}
+                    className="w-full h-10 bg-slate-50/50 hover:bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-2xs"
+                    required
+                  >
+                    <option value="">Selecione...</option>
+                    {activeClasses.map((cls) => (
+                      <option key={cls.id || cls.name} value={cls.name}>
+                        {cls.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* 3. Foto do período */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Foto do período
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  disabled={confirmIsSubmitting}
+                />
+
+                {confirmPhotoUrl ? (
+                  <div className="flex items-center justify-between gap-2 h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-slate-200 overflow-hidden border border-slate-300 shrink-0">
+                        <img
+                          src={confirmPhotoUrl}
+                          alt="Foto selecionada"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-slate-800 truncate">
+                        Foto pronta
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmPhotoUrl('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                      title="Remover foto"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={Upload}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={confirmIsSubmitting}
+                    className="w-full h-10 justify-center text-xs font-semibold bg-slate-50 hover:bg-slate-100 border-slate-300 rounded-xl shadow-2xs"
+                  >
+                    Carregar foto
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Feedback de Validação Pedagógica */}
+            {!isCollaborator && progressionFeedback && !progressionFeedback.isValid && (
+              <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {progressionFeedback.errorMessage}
+              </p>
+            )}
+
+            {/* Alinhamento do Botão de Ação: perfeitamente alinhado na extremidade direita do rodapé do card */}
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                icon={UserCheck}
+                isLoading={confirmIsSubmitting}
+                disabled={!isFormValid || confirmIsSubmitting}
+                className="font-bold text-xs shadow-xs"
+              >
+                {confirmIsSubmitting ? 'Salvando...' : isCollaborator ? 'Salvar período' : 'Confirmar matrícula'}
+              </Button>
+            </div>
+          </div>
+
+          <hr className="border-slate-200" />
+
+          {/* HIERARQUIA INFERIOR (HISTÓRICO E CONFERÊNCIA): Matrículas / Períodos confirmados */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
@@ -429,9 +642,9 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
                     }}
                     className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                   >
-                    <option value={5}>5</option>
                     <option value={10}>10</option>
                     <option value={20}>20</option>
+                    <option value={30}>30</option>
                   </select>
                 </div>
               )}
@@ -550,159 +763,6 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
                 )}
               </div>
             )}
-          </div>
-
-          <hr className="border-slate-100" />
-
-          {/* Seção: Nova matrícula / Novo período */}
-          <div className="space-y-3">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-              {isCollaborator ? 'Novo período letivo' : 'Nova matrícula'}
-            </span>
-
-            {/* Linha com os campos: Período, Turma (se aluno) e Foto */}
-            <div className={`grid grid-cols-1 ${isCollaborator ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-3 items-start`}>
-              {/* 1. Período Letivo */}
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-700">
-                  Selecionar período letivo
-                </label>
-                <select
-                  value={confirmPeriod}
-                  onChange={(e) => {
-                    setConfirmPeriod(e.target.value);
-                    setConfirmSuccessMsg(null);
-                  }}
-                  disabled={confirmIsSubmitting}
-                  className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                  required
-                >
-                  <option value="">Selecione o período...</option>
-                  {[...availablePeriods]
-                    .sort((a, b) => Number(b.name) - Number(a.name))
-                    .map((p) => {
-                      const isAlreadyConfirmed = chronologicalRecords.some(
-                        (r) => String(r.year) === String(p.name)
-                      );
-                      const isActive = p.name === getActiveAcademicYear(periods);
-                      return (
-                        <option
-                          key={p.id}
-                          value={p.name}
-                        >
-                          {p.name} {isActive ? '(Período Ativo)' : ''} {isAlreadyConfirmed ? (isCollaborator ? '— (Já registrado)' : '— (Já matriculado)') : ''}
-                        </option>
-                      );
-                    })}
-                </select>
-              </div>
-
-              {/* 2. Turma (apenas para alunos) */}
-              {!isCollaborator && (
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-700">
-                    Selecionar a turma
-                  </label>
-                  <select
-                    value={confirmClass}
-                    onChange={(e) => {
-                      setConfirmClass(e.target.value);
-                      setConfirmSuccessMsg(null);
-                    }}
-                    disabled={confirmIsSubmitting}
-                    className="w-full h-9 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Selecione a turma...</option>
-                    {activeClasses.map((cls) => (
-                      <option key={cls.id || cls.name} value={cls.name}>
-                        {cls.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* 3. Foto do período */}
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-700">
-                  Foto do período
-                </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  disabled={confirmIsSubmitting}
-                />
-
-                {confirmPhotoUrl ? (
-                  <div className="flex items-center justify-between gap-2 h-9 px-2 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-6 h-6 rounded bg-slate-200 overflow-hidden border border-slate-300 shrink-0">
-                        <img
-                          src={confirmPhotoUrl}
-                          alt="Foto selecionada"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <span className="text-xs font-medium text-slate-800 truncate">
-                        Foto pronta
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmPhotoUrl('');
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer shrink-0"
-                      title="Remover foto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    icon={Upload}
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={confirmIsSubmitting}
-                    className="w-full h-9 justify-center text-xs"
-                  >
-                    Carregar foto
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Feedback de Validação Pedagógica */}
-            {!isCollaborator && progressionFeedback && !progressionFeedback.isValid && (
-              <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {progressionFeedback.errorMessage}
-              </p>
-            )}
-
-            <p className="text-[11px] text-slate-400">
-              A foto do período é opcional e pode ser adicionada ou alterada depois.
-            </p>
-          </div>
-
-          {/* Botão de Ação Inferior: Confirmar matrícula / Salvar período */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              isLoading={confirmIsSubmitting}
-              disabled={!isFormValid || confirmIsSubmitting}
-            >
-              {confirmIsSubmitting ? 'Salvando...' : isCollaborator ? 'Salvar período' : 'Confirmar matrícula'}
-            </Button>
           </div>
         </form>
       </div>

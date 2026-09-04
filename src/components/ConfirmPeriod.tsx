@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Student, AcademicYearRecord, AcademicPeriod, ClassRecord, CropSettings, GeneratedTimeline } from '../types';
 import {
   Search,
@@ -18,6 +18,8 @@ import {
   AlertTriangle,
   BookOpen,
   Crop,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Alert } from './ui/Alert';
@@ -133,6 +135,69 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
   // Photo Adjust Modal state
   const [adjustingRecord, setAdjustingRecord] = useState<AcademicYearRecord | null>(null);
 
+  // Paginação em "Matrículas Confirmadas" (10, 20, 30)
+  const [recordsPageSize, setRecordsPageSize] = useState<number>(10);
+  const [recordsCurrentPage, setRecordsCurrentPage] = useState<number>(1);
+
+  // Copy name state & handler
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCopyName = async (id: string, name: string) => {
+    if (!name) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(name);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = name;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedId(id);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedId(null);
+      }, 2000);
+    } catch (err) {
+      console.error('Falha ao copiar nome:', err);
+    }
+  };
+
+  const renderCopyButton = (id: string, name: string) => {
+    const isCopied = copiedId === id;
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCopyName(id, name);
+        }}
+        title={isCopied ? 'Copiado!' : 'Copiar nome'}
+        className="relative inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/70 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shrink-0"
+        aria-label="Copiar nome para a área de transferência"
+      >
+        {isCopied ? (
+          <>
+            <Check className="w-3.5 h-3.5 text-emerald-600 animate-in zoom-in-75 duration-150" />
+            <span className="absolute -top-7 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-slate-800 text-white text-[10px] font-medium rounded shadow-sm whitespace-nowrap pointer-events-none animate-in fade-in duration-150 z-30">
+              Copiado!
+            </span>
+          </>
+        ) : (
+          <Copy className="w-3.5 h-3.5" />
+        )}
+      </button>
+    );
+  };
+
   // As turmas ativas do catálogo ordenadas
   const orderedClasses = useMemo(() => {
     if (classes && classes.length > 0) {
@@ -150,6 +215,26 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
       .filter((r) => r.studentId === selectedStudent.id)
       .sort((a, b) => String(b.year).localeCompare(String(a.year)));
   }, [selectedStudent?.id, records]);
+
+  // Paginação dinâmica para Matrículas Confirmadas
+  const totalRecordsPages = Math.max(1, Math.ceil(studentRecords.length / recordsPageSize));
+
+  const paginatedStudentRecords = useMemo(() => {
+    const startIndex = (recordsCurrentPage - 1) * recordsPageSize;
+    return studentRecords.slice(startIndex, startIndex + recordsPageSize);
+  }, [studentRecords, recordsCurrentPage, recordsPageSize]);
+
+  // Reseta página ao trocar de aluno
+  useEffect(() => {
+    setRecordsCurrentPage(1);
+  }, [selectedStudent?.id]);
+
+  // Ajusta página caso exclusões reduzam a contagem
+  useEffect(() => {
+    if (recordsCurrentPage > totalRecordsPages) {
+      setRecordsCurrentPage(totalRecordsPages);
+    }
+  }, [recordsCurrentPage, totalRecordsPages]);
 
   // Check if student already has a record for selected period
   const existingRecordForPeriod = useMemo(() => {
@@ -436,27 +521,42 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                   </div>
                 ) : (
                   matchingStudents.map((std) => (
-                    <button
+                    <div
                       key={std.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStudent(std);
-                        setSearchQuery('');
-                        setSuccessMsg('');
-                        setErrorMsg('');
-                      }}
-                      className="w-full text-left p-2.5 hover:bg-blue-50/60 transition-colors flex items-center justify-between cursor-pointer"
+                      className="w-full text-left p-2.5 hover:bg-blue-50/60 transition-colors flex items-center justify-between gap-3 group"
                     >
-                      <div>
-                        <p className="font-semibold text-xs sm:text-sm text-slate-800">{std.name}</p>
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => {
+                          setSelectedStudent(std);
+                          setSearchQuery('');
+                          setSuccessMsg('');
+                          setErrorMsg('');
+                        }}
+                      >
+                        <div className="inline-flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-xs sm:text-sm text-slate-800">
+                            {std.name}
+                          </span>
+                          {renderCopyButton(`search-${std.id}`, std.name)}
+                        </div>
                         <p className="text-xs font-mono text-slate-500">
                           Matrícula: {std.enrollment}
                         </p>
                       </div>
-                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStudent(std);
+                          setSearchQuery('');
+                          setSuccessMsg('');
+                          setErrorMsg('');
+                        }}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border border-blue-200 transition-colors cursor-pointer shrink-0"
+                      >
                         Selecionar
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -467,11 +567,15 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
           <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <span className="inline-block bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-200">
-                Aluno Selecionado
+                {selectedStudent.personType === 'collaborator' ? 'Colaborador Selecionado' : 'Aluno Selecionado'}
               </span>
-              <h3 className="text-sm font-bold text-slate-900">{selectedStudent.name}</h3>
+              <div className="inline-flex items-center gap-1.5 flex-wrap">
+                <h3 className="text-sm font-bold text-slate-900">{selectedStudent.name}</h3>
+                {renderCopyButton(`selected-${selectedStudent.id}`, selectedStudent.name)}
+              </div>
               <p className="text-xs text-slate-500">
-                Matrícula: <span className="font-mono font-semibold text-slate-800">{selectedStudent.enrollment}</span>
+                {selectedStudent.personType === 'collaborator' ? 'Código / Matrícula' : 'Matrícula'}:{' '}
+                <span className="font-mono font-semibold text-slate-800">{selectedStudent.enrollment}</span>
               </p>
             </div>
 
@@ -491,147 +595,10 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
         )}
       </div>
 
-      {/* STEP 2 & 3: HISTÓRICO & PAINEL DO PERÍODO */}
+      {/* STEP 2 & 3: PAINEL DO PERÍODO & MATRÍCULAS CONFIRMADAS */}
       {selectedStudent && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Historical Records Table (Histórico Registrado) */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <History className="w-4 h-4 text-slate-400" />
-                Histórico Registrado ({studentRecords.length} período(s))
-              </h3>
-
-              <button
-                type="button"
-                onClick={handleConfirmAnotherPeriod}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Confirmar outro período</span>
-              </button>
-            </div>
-
-            {studentRecords.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">
-                Nenhum registro histórico encontrado para este aluno.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
-                    <tr>
-                      <th className="px-4 py-2.5">Período</th>
-                      <th className="px-4 py-2.5">Turma</th>
-                      <th className="px-4 py-2.5">Foto</th>
-                      <th className="px-4 py-2.5 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {studentRecords.map((rec) => {
-                      const isCurrentlySelected = String(rec.year) === String(selectedPeriod);
-                      const isRecPeriodClosed = periods.find((p) => String(p.name) === String(rec.year))?.status === 'closed';
-                      const activeAcademicYear = getActiveAcademicYear(periods);
-                      const isActivePeriod = activeAcademicYear !== null && String(rec.year) === activeAcademicYear;
-                      const hasSavedTimeline = Boolean(
-                        timelines &&
-                        selectedStudent &&
-                        timelines.some((t) => t.studentId === selectedStudent.id && String(t.year) === String(rec.year))
-                      );
-
-                      return (
-                        <tr
-                          key={rec.id}
-                          className={`hover:bg-slate-50 transition-colors ${
-                            isCurrentlySelected ? 'bg-blue-50/60 font-bold' : ''
-                          }`}
-                        >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5 font-extrabold text-slate-900">
-                              <span>{rec.year}</span>
-                              {isRecPeriodClosed && (
-                                <span className="inline-flex items-center gap-1 bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs">
-                                  <Lock className="w-2.5 h-2.5 text-amber-400" />
-                                  FECHADO
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-slate-700">
-                            {rec.className}
-                          </td>
-                          <td className="px-4 py-3">
-                            {rec.photoUrl ? (
-                              <img
-                                src={rec.photoUrl}
-                                alt={`Foto ${rec.year}`}
-                                className="w-10 h-10 object-cover rounded-lg border border-slate-300 shadow-2xs"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center">
-                                <ImageIcon className="w-4 h-4 text-slate-400" />
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="inline-flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPeriod(String(rec.year));
-                                  setErrorMsg('');
-                                  setSuccessMsg('');
-                                }}
-                                className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${
-                                  isCurrentlySelected
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'text-slate-700 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 border-slate-200'
-                                }`}
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span>Visualizar</span>
-                              </button>
-
-                              {/* Ação Ajustar foto disponível EXCLUSIVAMENTE para o período letivo ativo */}
-                              {isActivePeriod && rec.photoUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => setAdjustingRecord(rec)}
-                                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 cursor-pointer transition-colors"
-                                  title={
-                                    hasSavedTimeline
-                                      ? 'Este período possui uma composição salva e não pode mais ter o enquadramento alterado.'
-                                      : 'Ajustar enquadramento da fotografia para Linha do Tempo e Carômetro'
-                                  }
-                                >
-                                  <Crop className="w-3 h-3" />
-                                  <span>Ajustar foto</span>
-                                </button>
-                              )}
-
-                              {onDeleteRecord && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRecordToDelete(rec)}
-                                  className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 cursor-pointer transition-colors"
-                                  title="Excluir Matrícula deste Período"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  <span>Excluir</span>
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* MAIN PANEL FOR SELECTED PERIOD */}
+          {/* HIERARQUIA SUPERIOR (AÇÃO IMEDIATA): MAIN PANEL FOR SELECTED PERIOD */}
 
           {/* CASE A: REGISTRO EXISTENTE (SOMENTE LEITURA / IMUTÁVEL) */}
           {existingRecordForPeriod ? (
@@ -746,10 +713,15 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
               onSubmit={handleSubmit}
               className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6"
             >
-              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <h3 className="font-extrabold text-slate-900 text-base">
-                  Confirmar no período {selectedPeriod}
-                </h3>
+              <div className="border-b border-slate-100 pb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    Confirmar no período {selectedPeriod}
+                  </h3>
+                  <span className="text-xs font-semibold text-slate-500">
+                    • {selectedStudent.name} ({selectedStudent.personType === 'collaborator' ? 'Colaborador' : 'Matrícula'}: {selectedStudent.enrollment})
+                  </span>
+                </div>
                 <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold px-2.5 py-0.5 rounded-full">
                   Novo Registro
                 </span>
@@ -783,7 +755,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                 {/* Select Period */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Período Letivo <span className="text-red-500">*</span>
+                    Período letivo <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedPeriod}
@@ -810,7 +782,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                 {/* Select Turma */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Turma Oficial <span className="text-red-500">*</span>
+                    Turma <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedClass}
@@ -877,14 +849,9 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
 
               {/* Photo Upload Section */}
               <div className="border-t border-slate-100 pt-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Foto do período <span className="text-slate-400 font-semibold lowercase">(opcional)</span>
-                  </label>
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    Pode ser anexada agora ou posteriormente
-                  </span>
-                </div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Foto do período <span className="text-slate-400 font-semibold lowercase">(opcional)</span>
+                </label>
 
                 <div className="flex flex-col sm:flex-row items-start gap-6">
                   {/* Preview Container */}
@@ -908,7 +875,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                     <div className="flex flex-wrap items-center gap-3">
                       <label className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer">
                         <Upload className="w-4 h-4 text-blue-400" />
-                        <span>{photoUrl ? 'Substituir Foto' : 'Carregar Foto (Opcional)'}</span>
+                        <span>{photoUrl ? 'Substituir Foto' : 'Carregar Foto'}</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -928,27 +895,214 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                         </button>
                       )}
                     </div>
-
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      A inclusão da foto é <strong>opcional</strong> para a confirmação da matrícula. Caso deseje confirmar agora sem fotografia, o registro do aluno será efetivado e a foto poderá ser adicionada posteriormente.
-                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Submit Action */}
-              <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-3">
+              {/* Submit Action: perfeitamente alinhado na extremidade direita do rodapé */}
+              <div className="border-t border-slate-100 pt-3 flex justify-end">
                 <button
                   type="submit"
                   disabled={isSubmitting || !selectedClassProgression.isValid}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <UserCheck className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Salvando...' : 'Confirmar Matrícula'}</span>
+                  <span>
+                    {isSubmitting
+                      ? 'Salvando...'
+                      : selectedStudent.personType === 'collaborator'
+                      ? 'Salvar período'
+                      : 'Confirmar matrícula'}
+                  </span>
                 </button>
               </div>
             </form>
           )}
+
+          {/* HIERARQUIA INFERIOR (HISTÓRICO E CONFERÊNCIA): TABELA DE MATRÍCULAS CONFIRMADAS */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <History className="w-4 h-4 text-slate-400" />
+                {selectedStudent.personType === 'collaborator' ? 'Períodos Registrados' : 'Matrículas Confirmadas'} ({studentRecords.length} período(s))
+              </h3>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {studentRecords.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                    <span>Períodos por página:</span>
+                    <select
+                      value={recordsPageSize}
+                      onChange={(e) => {
+                        setRecordsPageSize(Number(e.target.value));
+                        setRecordsCurrentPage(1);
+                      }}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={30}>30</option>
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleConfirmAnotherPeriod}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Confirmar outro período</span>
+                </button>
+              </div>
+            </div>
+
+            {studentRecords.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">
+                Nenhum registro histórico encontrado para este aluno.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-4 py-2.5">Período</th>
+                      <th className="px-4 py-2.5">Turma</th>
+                      <th className="px-4 py-2.5">Foto</th>
+                      <th className="px-4 py-2.5 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedStudentRecords.map((rec) => {
+                      const isCurrentlySelected = String(rec.year) === String(selectedPeriod);
+                      const isRecPeriodClosed = periods.find((p) => String(p.name) === String(rec.year))?.status === 'closed';
+                      const activeAcademicYear = getActiveAcademicYear(periods);
+                      const isActivePeriod = activeAcademicYear !== null && String(rec.year) === activeAcademicYear;
+                      const hasSavedTimeline = Boolean(
+                        timelines &&
+                        selectedStudent &&
+                        timelines.some((t) => t.studentId === selectedStudent.id && String(t.year) === String(rec.year))
+                      );
+
+                      return (
+                        <tr
+                          key={rec.id}
+                          className={`hover:bg-slate-50 transition-colors ${
+                            isCurrentlySelected ? 'bg-blue-50/60 font-bold' : ''
+                          }`}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5 font-extrabold text-slate-900">
+                              <span>{rec.year}</span>
+                              {isRecPeriodClosed && (
+                                <span className="inline-flex items-center gap-1 bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-2xs">
+                                  <Lock className="w-2.5 h-2.5 text-amber-400" />
+                                  FECHADO
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-700">
+                            {rec.className}
+                          </td>
+                          <td className="px-4 py-3">
+                            {rec.photoUrl ? (
+                              <img
+                                src={rec.photoUrl}
+                                alt={`Foto ${rec.year}`}
+                                className="w-10 h-10 object-cover rounded-lg border border-slate-300 shadow-2xs"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center">
+                                <ImageIcon className="w-4 h-4 text-slate-400" />
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPeriod(String(rec.year));
+                                  setErrorMsg('');
+                                  setSuccessMsg('');
+                                }}
+                                className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${
+                                  isCurrentlySelected
+                                    ? 'bg-blue-600 text-white border-blue-600'
+                                    : 'text-slate-700 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 border-slate-200'
+                                }`}
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Visualizar</span>
+                              </button>
+
+                              {/* Ação Ajustar foto disponível EXCLUSIVAMENTE para o período letivo ativo */}
+                              {isActivePeriod && rec.photoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAdjustingRecord(rec)}
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 cursor-pointer transition-colors"
+                                  title={
+                                    hasSavedTimeline
+                                      ? 'Este período possui uma composição salva e não pode mais ter o enquadramento alterado.'
+                                      : 'Ajustar enquadramento da fotografia para Linha do Tempo e Carômetro'
+                                  }
+                                >
+                                  <Crop className="w-3 h-3" />
+                                  <span>Ajustar foto</span>
+                                </button>
+                              )}
+
+                              {onDeleteRecord && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecordToDelete(rec)}
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 cursor-pointer transition-colors"
+                                  title="Excluir Matrícula deste Período"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Excluir</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Controles de Paginação */}
+            {totalRecordsPages > 1 && (
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-600">
+                <button
+                  type="button"
+                  onClick={() => setRecordsCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={recordsCurrentPage <= 1}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+                >
+                  ‹ Anterior
+                </button>
+
+                <span className="text-xs font-medium text-slate-600">
+                  Página <strong className="text-slate-800">{recordsCurrentPage}</strong> de{' '}
+                  <strong className="text-slate-800">{totalRecordsPages}</strong>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setRecordsCurrentPage((prev) => Math.min(totalRecordsPages, prev + 1))}
+                  disabled={recordsCurrentPage >= totalRecordsPages}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+                >
+                  Próxima ›
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -972,11 +1126,12 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
 
             {/* Record Summary Box */}
             <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs space-y-1">
-              <p className="text-slate-700">
-                <span className="font-bold text-slate-500">Aluno:</span>{' '}
-                <strong className="text-slate-900">{selectedStudent?.name}</strong>{' '}
+              <div className="text-slate-700 flex items-center gap-1.5 flex-wrap">
+                <span className="font-bold text-slate-500">Aluno:</span>
+                <strong className="text-slate-900">{selectedStudent?.name}</strong>
+                {selectedStudent?.name && renderCopyButton(`del-${selectedStudent.id}`, selectedStudent.name)}
                 <span className="font-mono text-slate-500">({selectedStudent?.enrollment})</span>
-              </p>
+              </div>
               <p className="text-slate-700">
                 <span className="font-bold text-slate-500">Período letivo:</span>{' '}
                 <strong className="text-slate-900">{recordToDelete.year}</strong>
