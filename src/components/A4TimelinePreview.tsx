@@ -234,10 +234,10 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   // Para proteger as fotos secundárias, o nome deve ficar estritamente em 1 linha (whitespace-nowrap, overflow-hidden).
   // Gatilho condicional: a abreviação SÓ PODE ser chamada se measureTextWidth(nome) > maxWidth.
   const cleanStudentName = (studentName || '').trim();
-  const modelNameFontSize = model.studentNamePosition?.fontSizePx ?? 24;
+  const modelNameFontSize = 30; // Padrão oficial fixado em 30px
   const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
   const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
-  const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} ${modelNameFontSize}px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
+  const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} 30px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
   const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 2);
 
   return (
@@ -484,7 +484,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
           </div>
         )}
 
-        {/* Layer 50 (z-50) — Student Name (Preservação estrita de fonte com margem lateral de 2% e quebra em até 2 linhas) */}
+        {/* Layer 50 (z-50) — Student Name (Estritamente 1 linha, 30px padrão oficial, sem reticências) */}
         <div
           style={{
             position: 'absolute',
@@ -494,7 +494,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
             minHeight: `${model.studentNamePosition?.heightPercent ?? 5}%`,
             maxHeight: `${Math.max(model.studentNamePosition?.heightPercent ?? 5, 8.5)}%`,
             transform: `rotate(${model.studentNamePosition?.rotation ?? 0}deg)`,
-            fontSize: `${modelNameFontSize}px`,
+            fontSize: '30px',
             lineHeight: modelNameLineHeight,
             color: model.studentNamePosition?.color || '#ffffff',
             textAlign: model.studentNamePosition?.align || 'center',
@@ -510,12 +510,11 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
           title={cleanStudentName}
         >
           <span
-            className="w-full whitespace-nowrap overflow-hidden text-center block truncate"
+            className="w-full whitespace-nowrap overflow-hidden text-center block"
             style={{
               textAlign: model.studentNamePosition?.align || 'center',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
             }}
           >
             {formattedStudentName}
