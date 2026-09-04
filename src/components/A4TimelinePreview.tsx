@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutModel, SchoolConfig, CropSettings, DotPosition, PersonType, getModelBackgroundUrl } from '../types';
 import { VisualReferenceGrid } from './VisualReferenceGrid';
-import { fitOrAbbreviateName } from '../utils/textMetrics';
+import { formatTimelineStudentName } from '../utils/textMetrics';
 import {
   A4_STANDARD_WIDTH,
   A4_STANDARD_HEIGHT,
@@ -229,21 +229,16 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const scaleX = isPrintScale ? A4_PRINT_WIDTH_PX / baseWidth : scale;
   const scaleY = isPrintScale ? A4_PRINT_HEIGHT_PX / baseHeight : scale;
 
-  // Formatação cirúrgica de nome via medição exata Canvas 2D:
-  // Preserva integralmente o tamanho de fonte configurado no modelo (fontSizePx) e a quebra nativa em até 2 linhas.
-  // Somente abrevia se o texto realmente não couber na largura útil do box (com margem lateral de segurança de 2%).
+  // Contexto Linha do Tempo: O espaço para o nome é enorme (ocupa quase toda a largura da página A4).
+  // A imensa maioria dos nomes cabe em 1 linha sem abreviar.
+  // Para proteger as fotos secundárias, o nome deve ficar estritamente em 1 linha (whitespace-nowrap, overflow-hidden).
+  // Gatilho condicional: a abreviação SÓ PODE ser chamada se measureTextWidth(nome) > maxWidth.
   const cleanStudentName = (studentName || '').trim();
   const modelNameFontSize = model.studentNamePosition?.fontSizePx ?? 24;
   const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
   const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
   const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} ${modelNameFontSize}px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
-  const formattedStudentName = fitOrAbbreviateName(cleanStudentName, {
-    maxWidthPx: nameBoxWidthPx,
-    font: nameFont,
-    maxLines: 2,
-    safetyMarginPercent: 2,
-    uppercase: true,
-  });
+  const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 2);
 
   return (
     <div
@@ -515,15 +510,12 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
           title={cleanStudentName}
         >
           <span
-            className="w-full break-words line-clamp-2 text-center"
+            className="w-full whitespace-nowrap overflow-hidden text-center block truncate"
             style={{
               textAlign: model.studentNamePosition?.align || 'center',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
+              whiteSpace: 'nowrap',
               overflow: 'hidden',
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
+              textOverflow: 'ellipsis',
             }}
           >
             {formattedStudentName}

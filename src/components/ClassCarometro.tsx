@@ -10,4 +10,5 @@ export const ClassCarometro = CarometroA4Sheet;
 export default ClassCarometro;
 
 export { CarometroA4Sheet };
+export { formatCarometroStudentName, formatCarometroName } from '../utils/textMetrics';
 export type { CarometroStudentItem } from '../utils/carometroUtils';

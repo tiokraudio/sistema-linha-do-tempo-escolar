@@ -158,6 +158,76 @@ export function fitOrAbbreviateName(
 }
 
 /**
+ * Formatação de nome específica para a LINHA DO TEMPO (A4TimelinePreview):
+ * - Espaço disponível enorme (quase toda a largura da página A4).
+ * - O nome deve ficar ESTRITAMENTE EM 1 LINHA (whitespace-nowrap, overflow-hidden) para proteger as fotos secundárias.
+ * - Gatilho condicional estrito: a abreviação SÓ PODE ser chamada se measureTextWidth(nome) > maxWidth.
+ * - Se couber (o que é padrão na Linha do Tempo), retorna o nome original 100% intacto em 1 linha só.
+ */
+export function formatTimelineStudentName(
+  studentName: string | null | undefined,
+  maxWidthPx: number,
+  font: string,
+  safetyMarginPercent: number = 2
+): string {
+  if (!studentName) return '';
+  const cleanName = studentName.trim().replace(/\s+/g, ' ');
+  if (!cleanName) return '';
+
+  // Largura gigante real do container na folha A4 descontando margem de segurança lateral de 2% (2% de cada lado = 4% total)
+  const totalMarginFraction = (Math.max(0, safetyMarginPercent) * 2) / 100;
+  const effectiveMaxWidth = maxWidthPx * Math.max(0.85, 1 - totalMarginFraction);
+
+  // Medição da largura real do nome em 1 linha via Canvas 2D
+  const textWidth = measureTextWidth(cleanName.toUpperCase(), font);
+
+  // Gatilho condicional: se couber no espaço enorme da A4, retorna o nome original intacto em 1 linha
+  if (textWidth <= effectiveMaxWidth) {
+    return cleanName;
+  }
+
+  // Abreviação cirúrgica raríssima, acionada apenas para nomes colossais que estourem o espaço enorme da folha:
+  return progressiveAbbreviateName(cleanName, (candidate) => {
+    return measureTextWidth(candidate.toUpperCase(), font) <= effectiveMaxWidth;
+  });
+}
+
+/**
+ * Formatação de nome específica para o CARÔMETRO (ClassCarometro / CarometroA4Sheet):
+ * - Espaço curtíssimo (estritamente limitado à largura da célula/foto do aluno na grade).
+ * - Desconta margem de segurança lateral de 2% a 4% (padrão 3%).
+ * - Permite quebra nativa em até 2 linhas (line-clamp-2).
+ * - Gatilho condicional estrito: se o nome completo couber no espaço da célula (em até 2 linhas),
+ *   retorna o nome original intacto.
+ * - Se estourar a largura da célula da grade, aciona a abreviação cirúrgica progressiva para não invadir o espaço do colega ao lado.
+ */
+export function formatCarometroStudentName(
+  studentName: string | null | undefined,
+  cellWidthPx: number,
+  font: string,
+  maxLines: number = 2,
+  safetyMarginPercent: number = 3
+): string {
+  if (!studentName) return '';
+  const cleanName = studentName.trim().replace(/\s+/g, ' ');
+  if (!cleanName) return '';
+
+  // Largura útil estrita da célula na grade descontando margem lateral de segurança (2% a 4%, padrão 3%)
+  const totalMarginFraction = (Math.max(0, safetyMarginPercent) * 2) / 100;
+  const effectiveMaxWidth = cellWidthPx * Math.max(0.80, 1 - totalMarginFraction);
+
+  // Gatilho condicional: verifica se o nome original já cabe na célula em até maxLines
+  if (canTextFitInLines(cleanName, font, effectiveMaxWidth, maxLines, true)) {
+    return cleanName;
+  }
+
+  // Estourou a célula da grade: aciona abreviação cirúrgica progressiva
+  return progressiveAbbreviateName(cleanName, (candidate) => {
+    return canTextFitInLines(candidate, font, effectiveMaxWidth, maxLines, true);
+  });
+}
+
+/**
  * Retorna a fonte e a largura útil configuradas para os cards do Carômetro
  */
 export function getCarometroMetrics(isLandscape: boolean, isPrint: boolean) {
@@ -201,11 +271,11 @@ export function formatCarometroName(
   isPrint: boolean
 ): string {
   const metrics = getCarometroMetrics(isLandscape, isPrint);
-  return fitOrAbbreviateName(fullName, {
-    maxWidthPx: metrics.boxWidthPx,
-    font: metrics.font,
-    maxLines: 2,
-    safetyMarginPercent: metrics.safetyMarginPercent,
-    uppercase: true,
-  });
+  return formatCarometroStudentName(
+    fullName,
+    metrics.boxWidthPx,
+    metrics.font,
+    2,
+    metrics.safetyMarginPercent
+  );
 }
