@@ -402,8 +402,10 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
             <h3 className="text-base font-semibold text-slate-900 uppercase">
               {isCollaborator ? 'REGISTRAR PERÍODO DO COLABORADOR' : 'CONFIRMAR MATRÍCULA'}
             </h3>
-            <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500 flex-wrap">
-              <span className="font-semibold text-slate-800">{student.name}</span>
+            <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500 flex-wrap min-w-0">
+              <span className="font-semibold text-slate-800 break-words line-clamp-2 max-w-sm" title={student.name}>
+                {student.name}
+              </span>
               <button
                 type="button"
                 onClick={handleCopyName}

@@ -39,7 +39,10 @@ export const TimelinePreviewModal: React.FC<TimelinePreviewModalProps> = ({
             <h2 className="text-base font-bold text-slate-900">
               Prévia
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p
+              className="text-xs text-slate-500 mt-0.5 truncate max-w-xl"
+              title={`${item.student.name} • ${item.latestClass} (${item.latestYear})`}
+            >
               {item.student.name} • {item.latestClass} ({item.latestYear})
             </p>
           </div>

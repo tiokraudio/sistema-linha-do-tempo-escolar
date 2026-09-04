@@ -170,6 +170,33 @@ export const A4_STANDARD_WIDTH = 794;
 export const A4_STANDARD_HEIGHT = 1123;
 
 /**
+ * Standard A4 print dimensions in pixels at 300 DPI:
+ * 2480px width x 3508px height (exact 300 DPI for 210 x 297 mm paper in portrait).
+ * A4_PRINT_SCALE scales standard 96 DPI CSS layout (~794px) to full 300 DPI (~3.1234).
+ */
+export const A4_PRINT_WIDTH_PX = 2480;
+export const A4_PRINT_HEIGHT_PX = 3508;
+export const A4_PRINT_SCALE = A4_PRINT_WIDTH_PX / A4_STANDARD_WIDTH; // ~3.1234257
+
+/**
+ * Standard A4 landscape print dimensions in pixels at 300 DPI:
+ * 3508px width x 2480px height (exact 300 DPI for 297 x 210 mm paper in landscape).
+ * A4_LANDSCAPE_PRINT_SCALE scales standard 96 DPI landscape (~1123px) to full 300 DPI (~3.1238).
+ */
+export const A4_LANDSCAPE_WIDTH_PX = 3508;
+export const A4_LANDSCAPE_HEIGHT_PX = 2480;
+export const A4_LANDSCAPE_STANDARD_WIDTH = 1123;
+export const A4_LANDSCAPE_STANDARD_HEIGHT = 794;
+export const A4_LANDSCAPE_PRINT_SCALE = A4_LANDSCAPE_WIDTH_PX / A4_LANDSCAPE_STANDARD_WIDTH; // ~3.1237756
+
+export interface CaptureA4Options {
+  width?: number;
+  height?: number;
+  pixelRatio?: number;
+  orientation?: 'portrait' | 'landscape';
+}
+
+/**
  * Aguarda que todos os elementos <canvas> com data-src dentro do container
  * tenham completado sua renderização (data-status === 'ready' ou 'error').
  * Isso impede que snapshots sejam capturados com telas brancas ou fotos não renderizadas.
@@ -191,13 +218,16 @@ export async function waitForAllCanvasesReady(container: HTMLElement, timeoutMs 
  * Prepares and captures an HTMLElement or element by ID using html-to-image.
  *
  * Guarantees:
- * 1. Strict A4 dimensions (794 x 1123 px base, pixelRatio 3 = 2382 x 3369 px at 300 DPI).
+ * 1. Strict A4 dimensions (Native 300 DPI: 2480 x 3508 px portrait or 3508 x 2480 px landscape, pixelRatio 1 for lossless high-resolution photos).
  * 2. Unaltered snapshot: removes any preview scaling (transform: scale) during render.
  * 3. Inlines all images/photos as Base64 to prevent blank pages or missing assets.
  * 4. Full browser SVG ForeignObject support for all modern CSS color spaces.
  * 5. Sincronização completa de todos os elementos <canvas> de alta resolução antes do snapshot.
  */
-export async function captureA4ElementToPng(target: string | HTMLElement): Promise<string> {
+export async function captureA4ElementToPng(
+  target: string | HTMLElement,
+  options?: CaptureA4Options
+): Promise<string> {
   const element = typeof target === 'string' ? document.getElementById(target) : target;
   if (!element) {
     throw new Error('Não foi possível gerar a imagem porque a prévia A4 não está disponível no DOM.');
@@ -221,12 +251,42 @@ export async function captureA4ElementToPng(target: string | HTMLElement): Promi
   // 4. Pequena pausa para garantir flush do pipeline gráfico e decodificação completa
   await new Promise((resolve) => setTimeout(resolve, 60));
 
-  // 5. Render directly using html-to-image with strict A4 geometry and pixelRatio 3 (300 DPI)
+  // Determine export geometry and orientation:
+  const isLandscape =
+    options?.orientation === 'landscape' ||
+    (options?.width && options?.height && options.width > options.height) ||
+    element.offsetWidth > element.offsetHeight ||
+    element.id.includes('landscape');
+
+  // Se o elemento foi configurado em escala nativa 300 DPI (>= 2000px) ou se for timeline / carometro:
+  const isTargetNative300Dpi =
+    (options?.width && options.width >= 2000) ||
+    (options?.height && options.height >= 2000) ||
+    element.offsetWidth >= 2000 ||
+    element.offsetHeight >= 2000 ||
+    element.id.includes('timeline') ||
+    element.id.includes('carometro');
+
+  const defaultWidth = isLandscape
+    ? (isTargetNative300Dpi ? A4_LANDSCAPE_WIDTH_PX : A4_LANDSCAPE_STANDARD_WIDTH)
+    : (isTargetNative300Dpi ? A4_PRINT_WIDTH_PX : A4_STANDARD_WIDTH);
+
+  const defaultHeight = isLandscape
+    ? (isTargetNative300Dpi ? A4_LANDSCAPE_HEIGHT_PX : A4_LANDSCAPE_STANDARD_HEIGHT)
+    : (isTargetNative300Dpi ? A4_PRINT_HEIGHT_PX : A4_STANDARD_HEIGHT);
+
+  const width = options?.width ?? defaultWidth;
+  const height = options?.height ?? defaultHeight;
+  const pixelRatio = options?.pixelRatio ?? (isTargetNative300Dpi ? 1 : 3);
+
+  // 5. Render directly using html-to-image with strict dimensions
   return await toPng(element, {
     quality: 1.0,
-    pixelRatio: 3, // ~2382 x 3369 px (True 300 DPI estrito para folha A4 gráfica comercial)
-    width: A4_STANDARD_WIDTH,
-    height: A4_STANDARD_HEIGHT,
+    pixelRatio,
+    width,
+    height,
+    canvasWidth: width,
+    canvasHeight: height,
     skipFonts: true, // EVITA O SECURITYERROR DO GOOGLE FONTS (cssRules cross-origin)
     preferredFontFormat: 'woff2',
     backgroundColor: '#ffffff',
@@ -236,8 +296,8 @@ export async function captureA4ElementToPng(target: string | HTMLElement): Promi
       transformOrigin: 'top left',
       margin: '0',
       padding: '0',
-      width: `${A4_STANDARD_WIDTH}px`,
-      height: `${A4_STANDARD_HEIGHT}px`,
+      width: `${width}px`,
+      height: `${height}px`,
       position: 'relative',
       top: '0',
       left: '0',
@@ -258,11 +318,11 @@ export async function captureA4ElementToPng(target: string | HTMLElement): Promi
 }
 
 /**
- * Creates a standard jsPDF instance with A4 dimensions (210 x 297 mm) in portrait orientation.
+ * Creates a standard jsPDF instance with A4 dimensions (210 x 297 mm or 297 x 210 mm) in portrait or landscape.
  */
-export function createA4JsPdf(): jsPDF {
+export function createA4JsPdf(orientation: 'portrait' | 'landscape' = 'portrait'): jsPDF {
   return new jsPDF({
-    orientation: 'portrait',
+    orientation,
     unit: 'mm',
     format: 'a4',
     compress: true,
@@ -270,17 +330,25 @@ export function createA4JsPdf(): jsPDF {
 }
 
 /**
- * Adds a high-resolution lossless PNG page covering the exact A4 sheet (210 x 297 mm).
+ * Adds a high-resolution lossless PNG page covering the exact A4 sheet (210 x 297 mm or 297 x 210 mm).
  */
-export function addPngPageToA4Pdf(pdf: jsPDF, pngDataUrl: string, isFirstPage: boolean): void {
-  const pdfWidth = pdf.internal.pageSize.getWidth() || 210;
-  const pdfHeight = pdf.internal.pageSize.getHeight() || 297;
+export function addPngPageToA4Pdf(
+  pdf: jsPDF,
+  pngDataUrl: string,
+  isFirstPage: boolean,
+  orientation: 'portrait' | 'landscape' = 'portrait'
+): void {
+  const isLandscape = orientation === 'landscape';
+  const defaultW = isLandscape ? 297 : 210;
+  const defaultH = isLandscape ? 210 : 297;
+  const pdfWidth = pdf.internal.pageSize.getWidth() || defaultW;
+  const pdfHeight = pdf.internal.pageSize.getHeight() || defaultH;
 
   if (!isFirstPage) {
-    pdf.addPage('a4', 'portrait');
+    pdf.addPage('a4', orientation);
   }
 
-  // Preencher exatamente a folha A4 (210 x 297 mm) sem distorcer proporção ('SLOW' impede downsampling e compressão com perdas)
+  // Preencher exatamente a folha A4 sem distorcer proporção ('SLOW' impede downsampling e compressão com perdas)
   pdf.addImage(pngDataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'SLOW');
 }
 

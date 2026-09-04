@@ -382,13 +382,20 @@ export const StudentList: React.FC<StudentListProps> = ({
                       </td>
 
                       {/* Matrícula / Código */}
-                      <td className="px-5 py-3 font-mono font-semibold text-slate-900">
+                      <td className="px-5 py-3 font-mono font-semibold text-slate-900 whitespace-nowrap">
                         {student.enrollment}
                       </td>
 
                       {/* Nome completo */}
-                      <td className="px-5 py-3 font-medium text-slate-800">
-                        {student.name}
+                      <td className="px-5 py-3 font-medium text-slate-800 max-w-[280px]">
+                        <div
+                          className={`break-words line-clamp-2 ${
+                            student.name.length > 30 ? 'text-xs leading-snug' : 'text-sm leading-normal'
+                          }`}
+                          title={student.name}
+                        >
+                          {student.name}
+                        </div>
                       </td>
 
                       {/* Status / Período Ativo (Colaborador) OU Turma (Aluno) */}

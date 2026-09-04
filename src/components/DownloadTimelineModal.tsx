@@ -7,6 +7,9 @@ import {
   createA4JsPdf,
   addPngPageToA4Pdf,
   saveA4Pdf,
+  A4_PRINT_WIDTH_PX,
+  A4_PRINT_HEIGHT_PX,
+  A4_PRINT_SCALE,
 } from '../utils/pdfGenerator';
 import JSZip from 'jszip';
 import {
@@ -602,15 +605,15 @@ export const DownloadTimelineModal: React.FC<DownloadTimelineModalProps> = ({
           )}
         </div>
 
-        {/* Hidden offscreen A4 rendering element for high-res lossless generation */}
+        {/* Hidden offscreen A4 rendering element for high-res 300 DPI native generation */}
         {activeRenderingItem && activeRenderingItem.savedTimeline && (
           <div
             style={{
               position: 'fixed',
               top: '-99999px',
               left: '-99999px',
-              width: '794px',
-              height: '1123px',
+              width: `${A4_PRINT_WIDTH_PX}px`,
+              height: `${A4_PRINT_HEIGHT_PX}px`,
               pointerEvents: 'none',
               zIndex: -9999,
               overflow: 'hidden',
@@ -620,12 +623,12 @@ export const DownloadTimelineModal: React.FC<DownloadTimelineModalProps> = ({
             <div
               id="download-timeline-offscreen-canvas"
               style={{
-                width: '794px',
-                height: '1123px',
-                minWidth: '794px',
-                minHeight: '1123px',
-                maxWidth: '794px',
-                maxHeight: '1123px',
+                width: `${A4_PRINT_WIDTH_PX}px`,
+                height: `${A4_PRINT_HEIGHT_PX}px`,
+                minWidth: `${A4_PRINT_WIDTH_PX}px`,
+                minHeight: `${A4_PRINT_HEIGHT_PX}px`,
+                maxWidth: `${A4_PRINT_WIDTH_PX}px`,
+                maxHeight: `${A4_PRINT_HEIGHT_PX}px`,
                 overflow: 'hidden',
                 boxSizing: 'border-box',
                 backgroundColor: '#ffffff',
@@ -638,7 +641,7 @@ export const DownloadTimelineModal: React.FC<DownloadTimelineModalProps> = ({
                 model={activeRenderingItem.savedTimeline.modelSnapshot}
                 schoolConfig={schoolConfig}
                 photoItems={activePhotoItems}
-                scale={1}
+                scale={A4_PRINT_SCALE}
                 interactive={false}
                 personType={activeRenderingItem.savedTimeline?.personType || activeRenderingItem.student.personType || 'student'}
               />

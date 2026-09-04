@@ -178,7 +178,10 @@ export const CarometroCropperModal: React.FC<CarometroCropperModalProps> = ({
         {/* Modal Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-white">
           <div>
-            <h3 className="font-bold text-slate-900 text-sm">
+            <h3
+              className="font-bold text-slate-900 text-sm truncate max-w-sm"
+              title={`Ajustar Carômetro — ${student.name}`}
+            >
               Ajustar Carômetro — {student.name}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">

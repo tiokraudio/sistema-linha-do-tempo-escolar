@@ -558,8 +558,17 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 bg-white">
           <div className="min-w-0">
             {/* Linha 1: Nome em destaque + Botão de Copiar Nome + Badge indicativo do tipo */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-slate-900 leading-snug">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <h2
+                className={`font-bold text-slate-900 leading-snug break-words max-w-full ${
+                  student.name.length > 35
+                    ? 'text-base'
+                    : student.name.length > 25
+                    ? 'text-lg'
+                    : 'text-xl'
+                }`}
+                title={student.name}
+              >
                 {student.name}
               </h2>
               <button
@@ -841,7 +850,10 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                   <h3 className="text-base font-semibold text-slate-900">
                     {photoModalRecord.photoUrl ? 'Alterar foto' : 'Adicionar foto'}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p
+                    className="text-xs text-slate-500 mt-0.5 truncate max-w-sm"
+                    title={`${student.name} · ${photoModalRecord.year}${photoModalRecord.className ? ` (${photoModalRecord.className})` : ''}`}
+                  >
                     {student.name} · {photoModalRecord.year}{photoModalRecord.className ? ` (${photoModalRecord.className})` : ''}
                   </p>
                 </div>

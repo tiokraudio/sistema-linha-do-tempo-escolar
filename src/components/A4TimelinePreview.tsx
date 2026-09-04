@@ -1,6 +1,14 @@
 import React from 'react';
 import { LayoutModel, SchoolConfig, CropSettings, DotPosition, PersonType, getModelBackgroundUrl } from '../types';
 import { VisualReferenceGrid } from './VisualReferenceGrid';
+import { fitOrAbbreviateName } from '../utils/textMetrics';
+import {
+  A4_STANDARD_WIDTH,
+  A4_STANDARD_HEIGHT,
+  A4_PRINT_WIDTH_PX,
+  A4_PRINT_HEIGHT_PX,
+  A4_PRINT_SCALE,
+} from '../utils/pdfGenerator';
 
 export interface TimelinePhotoItemForPreview {
   recordId?: string;
@@ -71,14 +79,14 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
         return;
       }
 
-      // CALIBRAÇÃO PARA 300 DPI GRÁFICO (Folha A4: 2382 x 3369 px):
-      // - Foto principal: preserva a definição máxima original (mínimo 2400 x 1800 px, até 3840 px)
+      // CALIBRAÇÃO PARA 300 DPI NATIVO (Folha A4: 2480 x 3508 px):
+      // - Foto principal: preserva a definição máxima original (mínimo 2480 x 1860 px, até 3840 px)
       // - Fotos secundárias: 1200 x 1200 px (supersampling de alta fidelidade para círculos)
-      let targetW = isPrimary ? 2400 : 1200;
-      let targetH = isPrimary ? 1800 : 1200;
+      let targetW = isPrimary ? 2480 : 1200;
+      let targetH = isPrimary ? 1860 : 1200;
 
       if (isPrimary && imgW > 0 && imgH > 0) {
-        const candidateW = Math.min(Math.max(imgW, 2400), 3840);
+        const candidateW = Math.min(Math.max(imgW, 2480), 3840);
         targetW = candidateW;
         targetH = Math.round(candidateW * 0.75);
       }
@@ -215,22 +223,44 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const secondaryDots = currentConfig.secondaryDots || [];
   const effectiveBgUrl = getModelBackgroundUrl(model, personType);
 
+  const isPrintScale = Math.abs(scale - A4_PRINT_SCALE) < 0.05 || scale >= 3.0;
+  const containerWidth = isPrintScale ? A4_PRINT_WIDTH_PX : Math.round(baseWidth * scale);
+  const containerHeight = isPrintScale ? A4_PRINT_HEIGHT_PX : Math.round(baseHeight * scale);
+  const scaleX = isPrintScale ? A4_PRINT_WIDTH_PX / baseWidth : scale;
+  const scaleY = isPrintScale ? A4_PRINT_HEIGHT_PX / baseHeight : scale;
+
+  // Formatação cirúrgica de nome via medição exata Canvas 2D:
+  // Preserva integralmente o tamanho de fonte configurado no modelo (fontSizePx) e a quebra nativa em até 2 linhas.
+  // Somente abrevia se o texto realmente não couber na largura útil do box (com margem lateral de segurança de 2%).
+  const cleanStudentName = (studentName || '').trim();
+  const modelNameFontSize = model.studentNamePosition?.fontSizePx ?? 24;
+  const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
+  const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
+  const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} ${modelNameFontSize}px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
+  const formattedStudentName = fitOrAbbreviateName(cleanStudentName, {
+    maxWidthPx: nameBoxWidthPx,
+    font: nameFont,
+    maxLines: 2,
+    safetyMarginPercent: 2,
+    uppercase: true,
+  });
+
   return (
     <div
       style={{
-        width: `${baseWidth * scale}px`,
-        height: `${baseHeight * scale}px`,
+        width: `${containerWidth}px`,
+        height: `${containerHeight}px`,
       }}
       className="overflow-hidden relative inline-block shrink-0"
     >
       <div
         style={{
-          transform: `scale(${scale})`,
+          transform: isPrintScale ? `scale(${scaleX}, ${scaleY})` : `scale(${scale})`,
           transformOrigin: 'top left',
           width: `${baseWidth}px`,
           height: `${baseHeight}px`,
         }}
-        className="transition-transform duration-150"
+        className={interactive ? "transition-transform duration-150" : ""}
       >
         <div
           id={id}
@@ -239,7 +269,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
             height: `${baseHeight}px`,
             fontFamily: model.fontFamily || "'Montserrat', sans-serif",
           }}
-          className="relative bg-white shadow-2xl overflow-hidden select-none print:shadow-none"
+          className={`relative bg-white ${isPrintScale ? '' : 'shadow-2xl'} overflow-hidden select-none print:shadow-none`}
         >
         {/* Layer 0 (z-0) — Base A4 White Canvas Background */}
         <div
@@ -451,34 +481,52 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
               zIndex: 50,
             }}
             className="pointer-events-none z-50 uppercase tracking-wide leading-tight flex items-center justify-center p-0.5 drop-shadow-xs"
+            title={schoolConfig.schoolName || 'ESCOLA'}
           >
-            <span className="w-full truncate text-center">
+            <span className="w-full truncate text-center px-3">
               {schoolConfig.schoolName || 'ESCOLA'}
             </span>
           </div>
         )}
 
-        {/* Layer 50 (z-50) — Student Name */}
+        {/* Layer 50 (z-50) — Student Name (Preservação estrita de fonte com margem lateral de 2% e quebra em até 2 linhas) */}
         <div
           style={{
             position: 'absolute',
             left: `${model.studentNamePosition?.xPercent ?? 0}%`,
             top: `${model.studentNamePosition?.yPercent ?? 86}%`,
             width: `${model.studentNamePosition?.widthPercent ?? 100}%`,
-            height: `${model.studentNamePosition?.heightPercent ?? 5}%`,
+            minHeight: `${model.studentNamePosition?.heightPercent ?? 5}%`,
+            maxHeight: `${Math.max(model.studentNamePosition?.heightPercent ?? 5, 8.5)}%`,
             transform: `rotate(${model.studentNamePosition?.rotation ?? 0}deg)`,
-            fontSize: `${model.studentNamePosition?.fontSizePx ?? 24}px`,
+            fontSize: `${modelNameFontSize}px`,
+            lineHeight: modelNameLineHeight,
             color: model.studentNamePosition?.color || '#ffffff',
             textAlign: model.studentNamePosition?.align || 'center',
             fontWeight: model.studentNamePosition?.fontWeight || 'bold',
             fontFamily: model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif",
             textShadow: '0 2px 4px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.7)',
             zIndex: 50,
+            paddingLeft: '2%',
+            paddingRight: '2%',
+            boxSizing: 'border-box',
           }}
-          className="pointer-events-none z-50 whitespace-nowrap uppercase tracking-wider flex items-center justify-center drop-shadow-md"
+          className="pointer-events-none z-50 uppercase tracking-wider flex items-center justify-center drop-shadow-md"
+          title={cleanStudentName}
         >
-          <span className="w-full" style={{ textAlign: model.studentNamePosition?.align || 'center' }}>
-            {studentName}
+          <span
+            className="w-full break-words line-clamp-2 text-center"
+            style={{
+              textAlign: model.studentNamePosition?.align || 'center',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+            }}
+          >
+            {formattedStudentName}
           </span>
         </div>
 

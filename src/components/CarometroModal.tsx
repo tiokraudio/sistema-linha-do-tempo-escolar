@@ -27,6 +27,12 @@ import {
   createA4JsPdf,
   addPngPageToA4Pdf,
   saveA4Pdf,
+  A4_PRINT_WIDTH_PX,
+  A4_PRINT_HEIGHT_PX,
+  A4_PRINT_SCALE,
+  A4_LANDSCAPE_WIDTH_PX,
+  A4_LANDSCAPE_HEIGHT_PX,
+  A4_LANDSCAPE_PRINT_SCALE,
 } from '../utils/pdfGenerator';
 import { apiFetch } from '../utils/api';
 import {
@@ -188,6 +194,7 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
 
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewPageIndex, setPreviewPageIndex] = useState<number>(0);
+  const [pageOrientation, setPageOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [activePageItemsForPdf, setActivePageItemsForPdf] = useState<CarometroStudentItem[]>([]);
   const cancelRequestedRef = useRef<boolean>(false);
 
@@ -423,8 +430,8 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
     return filteredItems.filter((it) => it.isEligibleForExport);
   };
 
-  // Pagination for A4 PDF / Preview: 20 students per page (4 rows x 5 cols) - ONLY eligible items!
-  const STUDENTS_PER_A4_PAGE = 20;
+  // Pagination for A4 PDF / Preview: 20 students (Retrato: 4 rows x 5 cols) or 24 (Paisagem: 4 rows x 6 cols)
+  const STUDENTS_PER_A4_PAGE = pageOrientation === 'landscape' ? 24 : 20;
   const a4Pages = useMemo(() => {
     const pool = getTargetExportPool();
     const pages: CarometroStudentItem[][] = [];
@@ -432,7 +439,7 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
       pages.push(pool.slice(i, i + STUDENTS_PER_A4_PAGE));
     }
     return pages;
-  }, [eligibleSelectedItems, filteredItems]);
+  }, [eligibleSelectedItems, filteredItems, STUDENTS_PER_A4_PAGE]);
 
   const totalA4Pages = Math.max(1, a4Pages.length);
 
@@ -669,7 +676,7 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
     }
   };
 
-  // Export A4 PDF - ONLY includes students with status === 'saved'
+  // Export A4 PDF in native 300 DPI - ONLY includes students with status === 'saved'
   const handleExportPdf = async () => {
     const targetPool = getTargetExportPool();
 
@@ -690,8 +697,11 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
     }
 
     try {
-      const pdf = createA4JsPdf();
+      const isLandscape = pageOrientation === 'landscape';
+      const pdf = createA4JsPdf(pageOrientation);
       const totalPages = pages.length;
+      const exportW = isLandscape ? A4_LANDSCAPE_WIDTH_PX : A4_PRINT_WIDTH_PX;
+      const exportH = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PRINT_HEIGHT_PX;
 
       for (let pIdx = 0; pIdx < totalPages; pIdx++) {
         if (cancelRequestedRef.current) break;
@@ -700,37 +710,110 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
         setActivePageItemsForPdf(pageStudents);
 
         setProgressStatus({
-          message: `Rasterizando folha A4 (${pIdx + 1}/${totalPages})`,
+          message: `Rasterizando folha A4 em 300 DPI (${pIdx + 1}/${totalPages})`,
           current: pIdx + 1,
           total: totalPages,
           percent: Math.round(((pIdx + 1) / totalPages) * 100),
         });
 
-        // Wait a frame for DOM rendering of high-res sheet
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        // Aguarda estabilização do DOM e desenho dos canvases de alta resolução
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         const containerEl = document.getElementById('carometro-export-a4-canvas');
         if (!containerEl) {
           throw new Error('Elemento de captura da folha A4 não encontrado.');
         }
 
-        const pngDataUrl = await captureA4ElementToPng('carometro-export-a4-canvas');
-        addPngPageToA4Pdf(pdf, pngDataUrl, pIdx === 0);
+        const pngDataUrl = await captureA4ElementToPng('carometro-export-a4-canvas', {
+          orientation: pageOrientation,
+          width: exportW,
+          height: exportH,
+          pixelRatio: 1,
+        });
+        addPngPageToA4Pdf(pdf, pngDataUrl, pIdx === 0, pageOrientation);
       }
 
       if (!cancelRequestedRef.current) {
         const periodLabel = activeTargetPeriod || 'Geral';
         const classLabel = classFilter !== 'all' ? classFilter : 'Todas_Turmas';
-        saveA4Pdf(pdf, `Carometro_${periodLabel}_${classLabel}`);
+        const orientationSuffix = isLandscape ? '_Paisagem' : '_Retrato';
+        saveA4Pdf(pdf, `Carometro_${periodLabel}_${classLabel}${orientationSuffix}`);
 
         setToastMsg({
           type: 'success',
-          text: `PDF do Carômetro gerado com sucesso (${totalPages} página${totalPages > 1 ? 's' : ''})!`,
+          text: `PDF do Carômetro gerado em 300 DPI com sucesso (${totalPages} página${totalPages > 1 ? 's' : ''})!`,
         });
       }
     } catch (err: any) {
       console.error('Erro na exportação do PDF:', err);
       setToastMsg({ type: 'error', text: 'Falha na geração do PDF.' });
+    } finally {
+      setIsProcessing(false);
+      setActivePageItemsForPdf([]);
+      setProgressStatus({ message: '', current: 0, total: 0, percent: 0 });
+    }
+  };
+
+  // Export current A4 page as a standalone 300 DPI PNG image
+  const handleExportPngCurrentPage = async () => {
+    const currentPageStudents = a4Pages[previewPageIndex] || [];
+    if (currentPageStudents.length === 0) {
+      setToastMsg({
+        type: 'error',
+        text: 'Nenhum aluno com Ajuste salvo nesta folha para exportar.',
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    cancelRequestedRef.current = false;
+    setActivePageItemsForPdf(currentPageStudents);
+
+    try {
+      setProgressStatus({
+        message: `Renderizando folha ${previewPageIndex + 1} em 300 DPI nativos...`,
+        current: 1,
+        total: 1,
+        percent: 50,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const containerEl = document.getElementById('carometro-export-a4-canvas');
+      if (!containerEl) {
+        throw new Error('Elemento de captura da folha A4 não encontrado.');
+      }
+
+      const isLandscape = pageOrientation === 'landscape';
+      const exportW = isLandscape ? A4_LANDSCAPE_WIDTH_PX : A4_PRINT_WIDTH_PX;
+      const exportH = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PRINT_HEIGHT_PX;
+
+      const pngDataUrl = await captureA4ElementToPng('carometro-export-a4-canvas', {
+        orientation: pageOrientation,
+        width: exportW,
+        height: exportH,
+        pixelRatio: 1,
+      });
+
+      const periodLabel = activeTargetPeriod || 'Geral';
+      const classLabel = classFilter !== 'all' ? classFilter : 'Todas_Turmas';
+      const orientationSuffix = isLandscape ? '_Paisagem' : '_Retrato';
+      const fileName = `Carometro_${periodLabel}_${classLabel}_Folha_${previewPageIndex + 1}${orientationSuffix}.png`;
+
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = pngDataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setToastMsg({
+        type: 'success',
+        text: `Folha ${previewPageIndex + 1} exportada em PNG (300 DPI, ${exportW}×${exportH} px) com sucesso!`,
+      });
+    } catch (err: any) {
+      console.error('Erro na exportação PNG da folha:', err);
+      setToastMsg({ type: 'error', text: 'Falha ao exportar imagem PNG da folha.' });
     } finally {
       setIsProcessing(false);
       setActivePageItemsForPdf([]);
@@ -1246,11 +1329,16 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
                         </td>
 
                         {/* Aluno/Colaborador (Nome + Matrícula) */}
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900 uppercase">
+                        <td className="py-3 px-4 max-w-[280px]">
+                          <div
+                            className={`font-bold text-slate-900 uppercase break-words line-clamp-2 ${
+                              item.student.name.length > 30 ? 'text-xs leading-snug' : 'text-sm'
+                            }`}
+                            title={item.student.name}
+                          >
                             {item.student.name}
                           </div>
-                          <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                          <div className="text-[11px] font-mono text-slate-400 mt-0.5 whitespace-nowrap">
                             {activeContext === 'collaborator' ? 'Cód / Mat' : 'Mat'}: {item.student.enrollment}
                           </div>
                         </td>
@@ -1361,34 +1449,82 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
           ) : (
             /* Live A4 Print Sheet Preview - Strictly eligible students with "Ajuste salvo" */
             <div className="flex flex-col items-center space-y-4">
-              {/* Pagination Controls */}
-              <div className="bg-white rounded-xl border border-slate-200 px-4 py-2 flex items-center gap-3 shadow-xs">
+              {/* Pagination, Orientation and Single-Page Download Controls */}
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs w-full max-w-4xl">
+                {/* Paginação */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={ChevronLeft}
+                    disabled={previewPageIndex <= 0}
+                    onClick={() => setPreviewPageIndex((p) => Math.max(0, p - 1))}
+                  >
+                    Página Anterior
+                  </Button>
+                  <span className="text-xs font-bold text-slate-700 px-1">
+                    Folha {previewPageIndex + 1} de {totalA4Pages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={ChevronRight}
+                    disabled={previewPageIndex >= totalA4Pages - 1}
+                    onClick={() => setPreviewPageIndex((p) => Math.min(totalA4Pages - 1, p + 1))}
+                  >
+                    Próxima Página
+                  </Button>
+                </div>
+
+                {/* Alternador de Orientação: Retrato (2480x3508) vs Paisagem (3508x2480) */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPageOrientation('portrait');
+                      setPreviewPageIndex(0);
+                    }}
+                    className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      pageOrientation === 'portrait'
+                        ? 'bg-white text-blue-700 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Retrato (2480×3508)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPageOrientation('landscape');
+                      setPreviewPageIndex(0);
+                    }}
+                    className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                      pageOrientation === 'landscape'
+                        ? 'bg-white text-blue-700 shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Paisagem (3508×2480)
+                  </button>
+                </div>
+
+                {/* Botão de download PNG da folha em 300 DPI nativos */}
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  icon={ChevronLeft}
-                  disabled={previewPageIndex <= 0}
-                  onClick={() => setPreviewPageIndex((p) => Math.max(0, p - 1))}
+                  icon={Download}
+                  onClick={handleExportPngCurrentPage}
+                  disabled={isProcessing || totalA4Pages === 0 || !a4Pages[previewPageIndex]?.length}
+                  title="Baixar imagem PNG de alta resolução (300 DPI nativos) desta folha"
                 >
-                  Página Anterior
-                </Button>
-                <span className="text-xs font-bold text-slate-700">
-                  Folha {previewPageIndex + 1} de {totalA4Pages}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={ChevronRight}
-                  disabled={previewPageIndex >= totalA4Pages - 1}
-                  onClick={() => setPreviewPageIndex((p) => Math.min(totalA4Pages - 1, p + 1))}
-                >
-                  Próxima Página
+                  Baixar Folha (PNG 300 DPI)
                 </Button>
               </div>
 
-              {/* Scaled A4 Sheet Component */}
+              {/* Scaled A4 Sheet Component para visualização de tela */}
               <div className="shadow-2xl border border-slate-300 rounded-sm overflow-hidden bg-white">
                 <CarometroA4Sheet
                   items={a4Pages[previewPageIndex] || []}
@@ -1397,36 +1533,46 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
                   className={classFilter !== 'all' ? classFilter : undefined}
                   pageIndex={previewPageIndex}
                   totalPages={totalA4Pages}
-                  scale={0.82}
+                  orientation={pageOrientation}
+                  scale={pageOrientation === 'landscape' ? 0.65 : 0.82}
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* Offscreen A4 Sheet for 1:1 High Resolution Rasterization */}
+        {/* Offscreen A4 Sheet for 300 DPI Native High Resolution Rasterization (2480x3508 or 3508x2480) */}
         <div
           style={{
             position: 'fixed',
             top: '-99999px',
             left: '-99999px',
-            width: '794px',
-            height: '1123px',
+            width: pageOrientation === 'landscape' ? `${A4_LANDSCAPE_WIDTH_PX}px` : `${A4_PRINT_WIDTH_PX}px`,
+            height: pageOrientation === 'landscape' ? `${A4_LANDSCAPE_HEIGHT_PX}px` : `${A4_PRINT_HEIGHT_PX}px`,
             pointerEvents: 'none',
             zIndex: -9999,
           }}
           aria-hidden="true"
         >
           {activePageItemsForPdf.length > 0 && (
-            <div id="carometro-export-a4-canvas" style={{ width: '794px', height: '1123px' }}>
+            <div
+              id="carometro-export-a4-canvas"
+              style={{
+                width: pageOrientation === 'landscape' ? `${A4_LANDSCAPE_WIDTH_PX}px` : `${A4_PRINT_WIDTH_PX}px`,
+                height: pageOrientation === 'landscape' ? `${A4_LANDSCAPE_HEIGHT_PX}px` : `${A4_PRINT_HEIGHT_PX}px`,
+                transform: 'none',
+              }}
+            >
               <CarometroA4Sheet
                 items={activePageItemsForPdf}
                 schoolConfig={schoolConfig}
                 periodName={activeTargetPeriod || undefined}
                 className={classFilter !== 'all' ? classFilter : undefined}
-                pageIndex={progressStatus.current - 1}
-                totalPages={progressStatus.total}
-                scale={1}
+                pageIndex={progressStatus.current > 0 ? progressStatus.current - 1 : previewPageIndex}
+                totalPages={progressStatus.total > 0 ? progressStatus.total : totalA4Pages}
+                orientation={pageOrientation}
+                isPrintMode={true}
+                scale={pageOrientation === 'landscape' ? A4_LANDSCAPE_PRINT_SCALE : A4_PRINT_SCALE}
               />
             </div>
           )}

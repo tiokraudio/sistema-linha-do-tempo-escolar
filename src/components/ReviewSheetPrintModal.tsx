@@ -550,8 +550,15 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
                                 className="w-3.5 h-3.5 rounded text-slate-900 focus:ring-slate-500 cursor-pointer"
                               />
                             </td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-900">
-                              {item.student.name}
+                            <td className="py-2.5 px-3 font-semibold text-slate-900 max-w-[240px]">
+                              <div
+                                className={`break-words line-clamp-2 ${
+                                  item.student.name.length > 30 ? 'text-xs' : 'text-sm'
+                                }`}
+                                title={item.student.name}
+                              >
+                                {item.student.name}
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-slate-600">
                               {item.latestClass}
@@ -699,6 +706,7 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
                             whiteSpace: 'nowrap',
                             maxWidth: '65%',
                           }}
+                          title={item.student.name}
                         >
                           {item.student.name}
                         </span>

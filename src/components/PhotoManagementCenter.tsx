@@ -486,13 +486,20 @@ export const PhotoManagementCenter: React.FC<PhotoManagementCenterProps> = ({
                       </td>
 
                       {/* Matrícula */}
-                      <td className="px-4 py-3 font-mono font-semibold text-slate-900">
+                      <td className="px-4 py-3 font-mono font-semibold text-slate-900 whitespace-nowrap">
                         {item.student.enrollment}
                       </td>
 
                       {/* Nome */}
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {item.student.name}
+                      <td className="px-4 py-3 font-medium text-slate-800 max-w-[260px]">
+                        <div
+                          className={`break-words line-clamp-2 ${
+                            item.student.name.length > 30 ? 'text-xs leading-snug' : 'text-sm'
+                          }`}
+                          title={item.student.name}
+                        >
+                          {item.student.name}
+                        </div>
                       </td>
 
                       {/* Turma (apenas se não for colaborador) */}

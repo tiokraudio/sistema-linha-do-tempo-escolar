@@ -17,7 +17,12 @@ import { DownloadTimelineModal } from './DownloadTimelineModal';
 import { ReviewSheetPrintModal } from './ReviewSheetPrintModal';
 import { TimelinePreviewModal } from './TimelinePreviewModal';
 import { CarometroModal } from './CarometroModal';
-import { downloadA4Pdf } from '../utils/pdfGenerator';
+import {
+  downloadA4Pdf,
+  A4_PRINT_WIDTH_PX,
+  A4_PRINT_HEIGHT_PX,
+  A4_PRINT_SCALE,
+} from '../utils/pdfGenerator';
 import {
   getStudentHistoricalTrajectory,
   buildTimelineItemsFromTrajectory,
@@ -1243,14 +1248,17 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
               position: 'fixed',
               top: '-99999px',
               left: '-99999px',
-              width: '794px',
-              height: '1123px',
+              width: `${A4_PRINT_WIDTH_PX}px`,
+              height: `${A4_PRINT_HEIGHT_PX}px`,
               pointerEvents: 'none',
               zIndex: -9999,
             }}
             aria-hidden="true"
           >
-            <div id="timeline-editor-export-a4-canvas" style={{ width: '794px', height: '1123px' }}>
+            <div
+              id="timeline-editor-export-a4-canvas"
+              style={{ width: `${A4_PRINT_WIDTH_PX}px`, height: `${A4_PRINT_HEIGHT_PX}px` }}
+            >
               <A4TimelinePreview
                 id="timeline-editor-export-element"
                 studentName={selectedStudent.name}
@@ -1258,7 +1266,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
                 model={activeModelToUse}
                 schoolConfig={schoolConfig}
                 photoItems={compositionItems}
-                scale={1}
+                scale={A4_PRINT_SCALE}
                 interactive={false}
                 showGrid={false}
                 personType={selectedStudent.personType || 'student'}
@@ -1786,23 +1794,28 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
                       </td>
 
                       {/* Aluno & Matrícula */}
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-3 max-w-[280px]">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 uppercase">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`font-bold text-slate-900 uppercase break-words line-clamp-2 ${
+                                item.student.name.length > 30 ? 'text-xs leading-snug' : 'text-sm'
+                              }`}
+                              title={item.student.name}
+                            >
                               {item.student.name}
                             </span>
                             {!isHistorical && onOpenStudentCentral && (
                               <button
                                 type="button"
                                 onClick={() => onOpenStudentCentral(item.student)}
-                                className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                                className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer shrink-0"
                               >
                                 Ficha
                               </button>
                             )}
                           </div>
-                          <span className="text-[11px] font-mono text-slate-400">
+                          <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap">
                             Matrícula: {item.student.enrollment}
                           </span>
                         </div>
@@ -1945,15 +1958,18 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
           position: 'fixed',
           top: '-99999px',
           left: '-99999px',
-          width: '794px',
-          height: '1123px',
+          width: `${A4_PRINT_WIDTH_PX}px`,
+          height: `${A4_PRINT_HEIGHT_PX}px`,
           pointerEvents: 'none',
           zIndex: -9999,
         }}
         aria-hidden="true"
       >
         {previewModalItem?.savedTimeline && (
-          <div id="timeline-modal-download-canvas" style={{ width: '794px', height: '1123px' }}>
+          <div
+            id="timeline-modal-download-canvas"
+            style={{ width: `${A4_PRINT_WIDTH_PX}px`, height: `${A4_PRINT_HEIGHT_PX}px` }}
+          >
             <A4TimelinePreview
               studentName={previewModalItem.student.name}
               studentEnrollment={previewModalItem.student.enrollment}
@@ -1966,7 +1982,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
                 cropSettings: p.cropSettings,
                 isPrimary: p.isPrimary,
               }))}
-              scale={1}
+              scale={A4_PRINT_SCALE}
               interactive={false}
               showGrid={false}
               personType={previewModalItem.savedTimeline.personType || previewModalItem.student.personType || 'student'}
