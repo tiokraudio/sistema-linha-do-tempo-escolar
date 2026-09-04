@@ -1,23 +1,23 @@
 /**
  * Parser Nominal Progressivo Baseado em Pixels para Nomes em Língua Portuguesa.
  *
- * REGRAS DO PARSER LINGUÍSTICO (Sem listas fixas de nomes):
+ * REGRAS DO PARSER LINGUÍSTICO:
  * 1. Preservar SEMPRE:
- *    - Primeiro Nome: se o nome tiver 4 ou mais palavras (ou 3 palavras completas),
- *      considera as duas primeiras como nome composto por padrão (ex: "JOÃO PEDRO", "MARIA EDUARDA").
- *    - Último Sobrenome.
- *    - Agnomes: FILHO, NETO, JÚNIOR, JR, SOBRINHO, etc. (NUNCA abreviados).
- *    - Partículas: DE, DA, DO, DAS, DOS, E. (Partículas NUNCA viram D. ou E., acompanham o sobrenome: "DOS SANTOS" -> "DOS S.").
+ *    - Primeiro prenome: Componente 0 é estritamente protegido.
+ *    - Último sobrenome: O sobrenome familiar final é estritamente protegido de abreviação.
+ *    - Agnomes: FILHO, FILHA, NETO, NETA, SOBRINHO, SOBRINHA, JÚNIOR, JR, SEGUNDO, SEGUNDA, TERCEIRO, TERCEIRA (NUNCA abreviados).
+ *    - Partículas: DE, DA, DO, DAS, DOS, E. (Partículas NUNCA viram D. ou E., acompanham o sobrenome: "DOS SANTOS" -> "DOS S.", "DA CONCEIÇÃO" -> "DA C.").
  *
- * 2. Abreviar PRIMEIRO (apenas se a medição em pixels exigir):
- *    - Sobrenomes intermediários, um a um, da direita para a esquerda.
- *    - Regra de abreviação: Primeira letra exata (mantendo acento) + ponto. Ex: "FERREIRA" -> "F.", "DOS SANTOS" -> "DOS S."
+ * 2. Princípio Fundamental de Medição:
+ *    - O algoritmo NUNCA abrevia um nome apenas por ter muitas palavras ou muitos caracteres.
+ *    - Primeiro mede o nome COMPLETO na largura real disponível. Se couber, RETORNA O NOME ORIGINAL.
  *
- * 3. Progressão Estrita:
- *    - A cada componente abreviado, remonta a string e testa no Canvas 2D. Se couber, PARA e retorna.
- *    - Se o nome tiver apenas 2 componentes (ex: "JOÃO SILVA", "JOSÉ DA SILVA") e não couber,
- *      NÃO abrevia para "JOÃO S." nem invente iniciais. Retorne o original e deixa o CSS dar clip visual.
- *    - É ESTRITAMENTE PROIBIDO o uso de reticências ("...").
+ * 3. Ordem de Abreviação Semântica Progressiva (Mínima Perda de Informação):
+ *    - Candidatos elegíveis: componentes intermediários situados entre o primeiro prenome e o último sobrenome da família.
+ *    - Testa da direita para a esquerda, um a um.
+ *    - A cada componente abreviado, remonta a string e remede no Canvas 2D.
+ *    - PARAR IMEDIATAMENTE assim que a primeira versão válida couber na largura útil.
+ *    - É ESTRITAMENTE PROIBIDO o uso de reticências ("...") ou cortes visuais (como "BARTOLOM").
  */
 
 // Partículas e conectivos gramaticais do português brasileiro
@@ -48,7 +48,17 @@ export interface SemanticComponent {
 }
 
 /**
- * Realiza o parsing semântico do nome dividindo-o em componentes preservando a vinculação de partículas.
+ * Realiza o parsing semântico do nome dividindo-o em componentes e vinculando partículas gramaticais.
+ * Ex:
+ * "SÂMYLA SILVA FERNANDES DA CONCEIÇÃO MIRANDA BARTOLOMEU" ->
+ * [
+ *   { word: "SÂMYLA" },
+ *   { word: "SILVA" },
+ *   { word: "FERNANDES" },
+ *   { particle: "DA", word: "CONCEIÇÃO" },
+ *   { word: "MIRANDA" },
+ *   { word: "BARTOLOMEU" }
+ * ]
  */
 export function parseNameComponents(name: string): SemanticComponent[] {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -87,11 +97,13 @@ export function parseNameComponents(name: string): SemanticComponent[] {
 }
 
 /**
- * Renderiza um componente nominal de forma completa ou cirurgicamente abreviada.
+ * Renderiza um componente nominal de forma completa ou abreviada.
  * A partícula SEMPRE acompanha a abreviação:
  * - "DOS SANTOS" -> "DOS S."
+ * - "DA CONCEIÇÃO" -> "DA C."
  * - "E SILVA" -> "E S."
  * - "FERREIRA" -> "F."
+ * Acentuação da primeira letra é rigorosamente preservada.
  */
 export function renderComponent(comp: SemanticComponent, abbreviated: boolean): string {
   if (!abbreviated) {
@@ -112,7 +124,7 @@ export function buildCandidateName(components: SemanticComponent[], abbreviatedI
 }
 
 /**
- * Abreviação Progressiva Baseada em Pixels.
+ * Abreviação Progressiva Semântica Baseada em Pixels.
  *
  * @param fullName Nome completo a ser avaliado
  * @param limitOrPredicate Limite numérico ou função predicada (Canvas 2D) que avalia se a string cabe
@@ -130,78 +142,56 @@ export function progressiveAbbreviateName(
       ? limitOrPredicate
       : (candidate: string) => candidate.length <= limitOrPredicate;
 
-  // REGRA DE OURO 1: O algoritmo NUNCA deve abreviar um nome apenas por ter muitos caracteres.
-  // Se couber no espaço real, retorne o nome 100% original.
+  // 1. REGRA FUNDAMENTAL: Se o nome completo original já couber no espaço real, retorne-o 100% intacto.
   if (isSatisfied(trimmed)) {
     return trimmed;
   }
 
-  const rawWords = trimmed.split(/\s+/);
   const components = parseNameComponents(trimmed);
 
-  // REGRA DE OURO 3: Se o nome tiver apenas 2 componentes (ex: "JOÃO SILVA", "JOSÉ DA SILVA") e não couber,
-  // NÃO abrevie para "JOÃO S." nem invente iniciais. Retorne o original e deixe o CSS dar clip visual (sem ...).
+  // 2. Nomes simples com 2 componentes ou menos (ex: "JOÃO SILVA", "JOSÉ DA SILVA")
+  // Não inventar abreviações agressivas (nunca "J. S." ou "J. DA SILVA"). Retorna o original.
   if (components.length <= 2) {
     return trimmed;
   }
 
+  // 3. Identificação semântica dos componentes protegidos:
+  // - Componente 0: primeiro prenome (SEMPRE protegido).
+  // - Agnome: se presente no último componente (ex: JÚNIOR, FILHO, NETO), é estritamente protegido.
+  // - Último sobrenome: penúltimo componente se houver agnome, ou último componente. É SEMPRE protegido.
   const lastIndex = components.length - 1;
   const hasAgnome = !!components[lastIndex].isAgnome;
   const lastSurnameIndex = hasAgnome ? lastIndex - 1 : lastIndex;
 
-  // Primeiro Nome: Se tiver 4 ou mais palavras (ou 3 palavras completas como "MARIA EDUARDA SILVA"),
-  // considera os dois primeiros como nome composto por padrão (preservar SEMPRE primeiro nome).
-  const isCompoundFirstName = rawWords.length >= 4 || (rawWords.length === 3 && components.length === 3);
-  const firstNameEndIndex = isCompoundFirstName ? 2 : 1;
-
-  // Sobrenomes intermediários elegíveis para abreviação inicial
-  // Da direita para a esquerda: do índice anterior ao último sobrenome até firstNameEndIndex
+  // 4. Componentes candidatos à abreviação:
+  // Todos os componentes intermediários situados estritamente entre o primeiro prenome (índice 0)
+  // e o último sobrenome da família (índice lastSurnameIndex).
   const middleIndices: number[] = [];
-  for (let i = firstNameEndIndex; i < lastSurnameIndex; i++) {
+  for (let i = 1; i < lastSurnameIndex; i++) {
     middleIndices.push(i);
   }
 
+  // Se não houver intermediários livres (ex: "JOSÉ DA SILVA FILHO", onde 0=JOSÉ, 1=DA SILVA, 2=FILHO)
+  if (middleIndices.length === 0) {
+    return trimmed;
+  }
+
+  // 5. Ordem de abreviação progressiva (minimizando perda de informação):
+  // Testa os componentes intermediários da direita para a esquerda, um a um.
+  // A cada abreviação, remede a string no Canvas 2D.
+  // PARAR IMEDIATAMENTE assim que a primeira versão válida couber.
   const abbreviatedSet = new Set<number>();
+  const reverseMiddle = [...middleIndices].reverse();
 
-  // ETAPA 1: Abreviar sobrenomes intermediários, um a um, da direita para a esquerda
-  if (middleIndices.length > 0) {
-    const reverseMiddle = [...middleIndices].reverse();
-    for (const idx of reverseMiddle) {
-      abbreviatedSet.add(idx);
-      const candidate = buildCandidateName(components, abbreviatedSet);
-      if (isSatisfied(candidate)) {
-        return candidate;
-      }
-    }
-    // Para nomes com sobrenomes intermediários, o primeiro nome e o último sobrenome são estritamente preservados
-    return buildCandidateName(components, abbreviatedSet);
-  }
-
-  // ETAPA 2: Nomes sem sobrenomes intermediários entre o primeiro nome e o último sobrenome:
-  // Caso A: Presença de Agnome (ex: "JOÃO CARLOS DE SOUZA JÚNIOR")
-  // "DE SOUZA" e "JÚNIOR" são estritamente protegidos.
-  // Abrevia o segundo componente do primeiro nome ("CARLOS" -> "C.")
-  if (hasAgnome && isCompoundFirstName && components.length > 2) {
-    abbreviatedSet.add(1);
+  for (const idx of reverseMiddle) {
+    abbreviatedSet.add(idx);
     const candidate = buildCandidateName(components, abbreviatedSet);
     if (isSatisfied(candidate)) {
       return candidate;
     }
-    return candidate;
   }
 
-  // Caso B: 3 componentes sem agnome (ex: "MARIA EDUARDA SILVA")
-  // Primeiro nome composto "MARIA EDUARDA" é preservado; se não couber, abrevia o último sobrenome ("SILVA" -> "S.")
-  if (!hasAgnome && components.length === 3) {
-    abbreviatedSet.add(2);
-    const candidate = buildCandidateName(components, abbreviatedSet);
-    if (isSatisfied(candidate)) {
-      return candidate;
-    }
-    return candidate;
-  }
-
-  // Retorna a string montada sem NUNCA usar reticências "..."
+  // Retorna a versão construída sem NUNCA usar reticências "..." ou cortar caracteres
   return buildCandidateName(components, abbreviatedSet);
 }
 

@@ -15,14 +15,18 @@ let sharedContext: CanvasRenderingContext2D | null = null;
  * Mede a largura exata de uma string em pixels ANTES de renderizar via Canvas 2D API.
  *
  * @param text Texto a ser medido
- * @param font Especificação da fonte CSS (ex: "bold 24px 'Montserrat', sans-serif")
+ * @param font Especificação da fonte CSS (ex: "bold 30px 'Montserrat', sans-serif")
+ * @param letterSpacingPx Espaçamento adicional entre caracteres em pixels (ex: tracking-wider 0.05em = 1.5px em 30px)
  */
-export function measureTextWidth(text: string, font: string): number {
+export function measureTextWidth(text: string, font: string, letterSpacingPx: number = 0): number {
   if (!text) return 0;
 
-  // Fallback seguro caso seja executado fora do ambiente de navegador
+  // Fallback seguro caso seja executado fora do ambiente de navegador (SSR / Node.js)
   if (typeof document === 'undefined') {
-    return text.length * 10;
+    const fontSizeMatch = font.match(/(\d+)px/);
+    const fontSizePx = fontSizeMatch ? Number(fontSizeMatch[1]) : 16;
+    const charWidthPx = fontSizePx * 0.62;
+    return text.length * charWidthPx + Math.max(0, text.length - 1) * letterSpacingPx;
   }
 
   if (!sharedCanvas) {
@@ -37,11 +41,25 @@ export function measureTextWidth(text: string, font: string): number {
     const ctx = canvas.getContext('2d');
     if (!ctx) return 0;
     ctx.font = font;
-    return ctx.measureText(text).width;
+    let baseWidth = 0;
+    if ('letterSpacing' in ctx && letterSpacingPx > 0) {
+      (ctx as unknown as { letterSpacing: string }).letterSpacing = `${letterSpacingPx}px`;
+      baseWidth = ctx.measureText(text).width;
+    } else {
+      baseWidth = ctx.measureText(text).width + Math.max(0, text.length - 1) * letterSpacingPx;
+    }
+    return baseWidth;
   }
 
   context.font = font;
-  return context.measureText(text).width;
+  let baseWidth = 0;
+  if ('letterSpacing' in context && letterSpacingPx > 0) {
+    (context as unknown as { letterSpacing: string }).letterSpacing = `${letterSpacingPx}px`;
+    baseWidth = context.measureText(text).width;
+  } else {
+    baseWidth = context.measureText(text).width + Math.max(0, text.length - 1) * letterSpacingPx;
+  }
+  return baseWidth;
 }
 
 /**
@@ -118,20 +136,15 @@ export interface TextFitOptions {
 /**
  * Ajusta cirurgicamente o nome de um aluno para caber perfeitamente no container:
  * 1. Primeiro testa se o nome original completo JÁ CABE no espaço disponível em até maxLines (ex: 2).
- *    Se couber, RETORNA O NOME ORIGINAL INTACTO (zero falsos positivos).
- * 2. Se e somente se o nome não couber, aplica abreviação cirúrgica progressiva
- *    dos sobrenomes intermediários da direita para a esquerda, testando a cada passo
- *    se a versão abreviada agora cabe perfeitamente na medição real de pixels.
- *
- * @param fullName Nome do aluno
- * @param options Opções de medição e restrições de layout
+ * 2. Se couber, RETORNA O NOME ORIGINAL (eliminando falsos positivos).
+ * 3. Se e somente se estourar o espaço, aplica a abreviação progressiva testando a cada passo via Canvas 2D.
  */
-export function fitOrAbbreviateName(
-  fullName: string | null | undefined,
+export function fitStudentName(
+  studentName: string | null | undefined,
   options: TextFitOptions
 ): string {
-  if (!fullName) return '';
-  const trimmed = fullName.trim().replace(/\s+/g, ' ');
+  if (!studentName) return '';
+  const trimmed = studentName.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
 
   const {
@@ -142,11 +155,11 @@ export function fitOrAbbreviateName(
     uppercase = true,
   } = options;
 
-  // Largura útil deduzindo a margem lateral de segurança (ex: 2% de cada lado = 4% total)
+  // Aplica margem de segurança lateral (2% a 4% de resguardo nas bordas)
   const totalMarginFraction = (Math.max(0, safetyMarginPercent) * 2) / 100;
   const effectiveMaxWidthPx = maxWidthPx * Math.max(0.85, 1 - totalMarginFraction);
 
-  // 1. Verificação Primária: O nome original já cabe sem qualquer alteração?
+  // 1. O nome original completo já cabe no espaço disponível?
   if (canTextFitInLines(trimmed, font, effectiveMaxWidthPx, maxLines, uppercase)) {
     return trimmed;
   }
@@ -159,36 +172,44 @@ export function fitOrAbbreviateName(
 
 /**
  * Formatação de nome específica para a LINHA DO TEMPO (A4TimelinePreview):
- * - Espaço disponível enorme (quase toda a largura da página A4).
+ * - Espaço disponível amplo (quase toda a largura da página A4).
  * - O nome deve ficar ESTRITAMENTE EM 1 LINHA (whitespace-nowrap, overflow-hidden) para proteger as fotos secundárias.
  * - Gatilho condicional estrito: a abreviação SÓ PODE ser chamada se measureTextWidth(nome) > maxWidth.
  * - Se couber (o que é padrão na Linha do Tempo), retorna o nome original 100% intacto em 1 linha só.
+ * - Considera letter-spacing de 0.05em (tracking-wider) e margem de segurança contra cortes de subpixel.
+ * - O último sobrenome NUNCA pode ser cortado pelo CSS.
  */
 export function formatTimelineStudentName(
   studentName: string | null | undefined,
   maxWidthPx: number,
   font: string,
-  safetyMarginPercent: number = 2
+  safetyMarginPercent: number = 3
 ): string {
   if (!studentName) return '';
   const cleanName = studentName.trim().replace(/\s+/g, ' ');
   if (!cleanName) return '';
 
-  // Largura gigante real do container na folha A4 descontando margem de segurança lateral de 2% (2% de cada lado = 4% total)
+  // Largura útil real do container na folha A4 descontando margem de segurança e padding lateral:
+  // O container possui paddingLeft: 2% e paddingRight: 2% (4% total).
+  // A margem de segurança padrão de 3% de cada lado (6% total) cobre o padding CSS e resguarda subpixel rendering.
   const totalMarginFraction = (Math.max(0, safetyMarginPercent) * 2) / 100;
-  const effectiveMaxWidth = maxWidthPx * Math.max(0.85, 1 - totalMarginFraction);
+  const effectiveMaxWidth = maxWidthPx * Math.max(0.80, 1 - totalMarginFraction);
 
-  // Medição da largura real do nome em 1 linha via Canvas 2D
-  const textWidth = measureTextWidth(cleanName.toUpperCase(), font);
+  // Na Linha do Tempo, a classe CSS aplica tracking-wider (letter-spacing: 0.05em).
+  // Com o tamanho oficial de 30px, 0.05em equivale a 1.5px por caractere.
+  const letterSpacingPx = 1.5;
 
-  // Gatilho condicional: se couber no espaço enorme da A4, retorna o nome original intacto em 1 linha
-  if (textWidth <= effectiveMaxWidth) {
+  // Medição da largura real do nome em 1 linha via Canvas 2D em caixa alta (uppercase)
+  const fullTextWidth = measureTextWidth(cleanName.toUpperCase(), font, letterSpacingPx);
+
+  // Gatilho condicional: se couber no espaço da folha A4, retorna o nome original 100% intacto em 1 linha
+  if (fullTextWidth <= effectiveMaxWidth) {
     return cleanName;
   }
 
-  // Abreviação cirúrgica raríssima, acionada apenas para nomes colossais que estourem o espaço enorme da folha:
+  // Abreviação cirúrgica semântica, acionada somente para nomes que estourem o espaço da folha:
   return progressiveAbbreviateName(cleanName, (candidate) => {
-    return measureTextWidth(candidate.toUpperCase(), font) <= effectiveMaxWidth;
+    return measureTextWidth(candidate.toUpperCase(), font, letterSpacingPx) <= effectiveMaxWidth;
   });
 }
 
@@ -228,54 +249,72 @@ export function formatCarometroStudentName(
 }
 
 /**
- * Retorna a fonte e a largura útil configuradas para os cards do Carômetro
+ * Formata o nome do estudante para o Carômetro com suporte tanto aos parâmetros diretos
+ * (cellWidth, font) quanto à chamada por contexto (isLandscape, isPrint).
  */
+export function formatCarometroName(
+  studentName: string | null | undefined,
+  isLandscapeOrCellWidth: boolean | number = false,
+  isPrintOrFont: boolean | string = false,
+  maxLines: number = 2,
+  safetyMarginPercent: number = 3
+): string {
+  if (typeof isLandscapeOrCellWidth === 'boolean') {
+    const isLandscape = isLandscapeOrCellWidth;
+    const isPrint = typeof isPrintOrFont === 'boolean' ? isPrintOrFont : false;
+    const metrics = getCarometroMetrics(isLandscape, isPrint);
+    return formatCarometroStudentName(
+      studentName,
+      metrics.cellWidthPx,
+      metrics.font,
+      metrics.maxLines,
+      safetyMarginPercent
+    );
+  } else {
+    const cellWidth = isLandscapeOrCellWidth;
+    const font = typeof isPrintOrFont === 'string' ? isPrintOrFont : "bold 11px 'Montserrat', sans-serif";
+    return formatCarometroStudentName(
+      studentName,
+      cellWidth,
+      font,
+      maxLines,
+      safetyMarginPercent
+    );
+  }
+}
+
 export function getCarometroMetrics(isLandscape: boolean, isPrint: boolean) {
   if (isPrint) {
     if (isLandscape) {
       return {
-        boxWidthPx: 360,
-        font: 'bold 31px sans-serif',
-        safetyMarginPercent: 3,
+        cellWidthPx: 360,
+        fontSizePx: 31,
+        font: "bold 31px 'Montserrat', sans-serif",
+        maxLines: 2,
       };
     } else {
       return {
-        boxWidthPx: 388,
-        font: 'bold 34px sans-serif',
-        safetyMarginPercent: 3,
+        cellWidthPx: 388,
+        fontSizePx: 34,
+        font: "bold 34px 'Montserrat', sans-serif",
+        maxLines: 2,
       };
     }
   } else {
     if (isLandscape) {
       return {
-        boxWidthPx: 115,
-        font: 'bold 10px sans-serif',
-        safetyMarginPercent: 3,
+        cellWidthPx: 115,
+        fontSizePx: 10,
+        font: "bold 10px 'Montserrat', sans-serif",
+        maxLines: 2,
       };
     } else {
       return {
-        boxWidthPx: 124,
-        font: 'bold 11px sans-serif',
-        safetyMarginPercent: 3,
+        cellWidthPx: 124,
+        fontSizePx: 11,
+        font: "bold 11px 'Montserrat', sans-serif",
+        maxLines: 2,
       };
     }
   }
-}
-
-/**
- * Formata o nome do aluno especificamente para o Carômetro utilizando medição Canvas 2D
- */
-export function formatCarometroName(
-  fullName: string | null | undefined,
-  isLandscape: boolean,
-  isPrint: boolean
-): string {
-  const metrics = getCarometroMetrics(isLandscape, isPrint);
-  return formatCarometroStudentName(
-    fullName,
-    metrics.boxWidthPx,
-    metrics.font,
-    2,
-    metrics.safetyMarginPercent
-  );
 }

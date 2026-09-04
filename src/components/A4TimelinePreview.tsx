@@ -238,7 +238,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
   const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
   const nameFont = `${model.studentNamePosition?.fontWeight || 'bold'} 30px ${model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif"}`;
-  const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 2);
+  const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 3);
 
   return (
     <div
