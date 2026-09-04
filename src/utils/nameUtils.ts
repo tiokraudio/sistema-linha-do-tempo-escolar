@@ -17,7 +17,7 @@
  *    - Testa da direita para a esquerda, um a um.
  *    - A cada componente abreviado, remonta a string e remede no Canvas 2D.
  *    - PARAR IMEDIATAMENTE assim que a primeira versão válida couber na largura útil.
- *    - É ESTRITAMENTE PROIBIDO o uso de reticências ("...") ou cortes visuais (como "BARTOLOM").
+ *    - É ESTRITAMENTE PROIBIDO o uso de reticências ("...") ou cortes arbitrários de caracteres.
  */
 
 // Partículas e conectivos gramaticais do português brasileiro
@@ -50,14 +50,12 @@ export interface SemanticComponent {
 /**
  * Realiza o parsing semântico do nome dividindo-o em componentes e vinculando partículas gramaticais.
  * Ex:
- * "SÂMYLA SILVA FERNANDES DA CONCEIÇÃO MIRANDA BARTOLOMEU" ->
+ * "MARIA EDUARDA DOS SANTOS FERREIRA" ->
  * [
- *   { word: "SÂMYLA" },
- *   { word: "SILVA" },
- *   { word: "FERNANDES" },
- *   { particle: "DA", word: "CONCEIÇÃO" },
- *   { word: "MIRANDA" },
- *   { word: "BARTOLOMEU" }
+ *   { word: "MARIA" },
+ *   { word: "EDUARDA" },
+ *   { particle: "DOS", word: "SANTOS" },
+ *   { word: "FERREIRA" }
  * ]
  */
 export function parseNameComponents(name: string): SemanticComponent[] {
@@ -128,11 +126,12 @@ export function buildCandidateName(components: SemanticComponent[], abbreviatedI
  *
  * @param fullName Nome completo a ser avaliado
  * @param limitOrPredicate Limite numérico ou função predicada (Canvas 2D) que avalia se a string cabe
+ * @returns Nome original ou candidato abreviado que satisfaz o predicado, ou null se nenhuma combinação segura couber
  */
 export function progressiveAbbreviateName(
   fullName: string | undefined | null,
   limitOrPredicate: number | ((candidate: string) => boolean) = 28
-): string {
+): string | null {
   if (!fullName) return '';
   const trimmed = fullName.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
@@ -149,10 +148,11 @@ export function progressiveAbbreviateName(
 
   const components = parseNameComponents(trimmed);
 
-  // 2. Nomes simples com 2 componentes ou menos (ex: "JOÃO SILVA", "JOSÉ DA SILVA")
-  // Não inventar abreviações agressivas (nunca "J. S." ou "J. DA SILVA"). Retorna o original.
+  // 2. Nomes simples com 2 componentes ou menos (ex: "Prenome Sobrenome")
+  // Não há componentes intermediários livres para abreviar sem violar o prenome ou o último sobrenome.
+  // Como o nome completo não coube, não existe abreviação semanticamente segura possível.
   if (components.length <= 2) {
-    return trimmed;
+    return null;
   }
 
   // 3. Identificação semântica dos componentes protegidos:
@@ -171,15 +171,16 @@ export function progressiveAbbreviateName(
     middleIndices.push(i);
   }
 
-  // Se não houver intermediários livres (ex: "JOSÉ DA SILVA FILHO", onde 0=JOSÉ, 1=DA SILVA, 2=FILHO)
+  // Se não houver intermediários livres para abreviação (ex: prenome + sobrenome + agnome)
+  // e o nome original não coube, nenhuma transformação semanticamente segura é viável.
   if (middleIndices.length === 0) {
-    return trimmed;
+    return null;
   }
 
   // 5. Ordem de abreviação progressiva (minimizando perda de informação):
   // Testa os componentes intermediários da direita para a esquerda, um a um.
-  // A cada abreviação, remede a string no Canvas 2D.
-  // PARAR IMEDIATAMENTE assim que a primeira versão válida couber.
+  // A cada alteração, testa imediatamente o candidato gerado.
+  // Retorna SOMENTE o primeiro candidato que efetivamente passe no predicado.
   const abbreviatedSet = new Set<number>();
   const reverseMiddle = [...middleIndices].reverse();
 
@@ -191,8 +192,10 @@ export function progressiveAbbreviateName(
     }
   }
 
-  // Retorna a versão construída sem NUNCA usar reticências "..." ou cortar caracteres
-  return buildCandidateName(components, abbreviatedSet);
+  // 6. Caso extremo: todos os intermediários foram abreviados e o candidato ainda NÃO cabe.
+  // NUNCA retornar silenciosamente uma string que não passe no predicado.
+  // Retorna explicitamente null para sinalizar que nenhuma abreviação segura satisfaz a largura.
+  return null;
 }
 
 /**

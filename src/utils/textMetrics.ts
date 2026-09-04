@@ -165,9 +165,10 @@ export function fitStudentName(
   }
 
   // 2. Não coube: utiliza abreviação progressiva com teste exato via Canvas 2D
-  return progressiveAbbreviateName(trimmed, (candidate) => {
-    return canTextFitInLines(candidate, font, effectiveMaxWidthPx, maxLines, uppercase);
+  const candidate = progressiveAbbreviateName(trimmed, (cand) => {
+    return canTextFitInLines(cand, font, effectiveMaxWidthPx, maxLines, uppercase);
   });
+  return candidate ?? trimmed;
 }
 
 /**
@@ -178,13 +179,18 @@ export function fitStudentName(
  * - Se couber (o que é padrão na Linha do Tempo), retorna o nome original 100% intacto em 1 linha só.
  * - Considera letter-spacing de 0.05em (tracking-wider) e margem de segurança contra cortes de subpixel.
  * - O último sobrenome NUNCA pode ser cortado pelo CSS.
+ * - REGRA FUNDAMENTAL: NUNCA pode retornar um nome que exceda a largura disponível.
+ *   O resultado final é geometricamente validado pelo predicado real de medição em Canvas 2D.
+ * - Caso extremo: se nenhuma abreviação semanticamente segura fizer o nome caber,
+ *   retorna null explicitamente para deixar esse estado claramente identificável para validação,
+ *   em vez de fingir que o nome cabe ou confiar no CSS overflow-hidden.
  */
 export function formatTimelineStudentName(
   studentName: string | null | undefined,
   maxWidthPx: number,
   font: string,
   safetyMarginPercent: number = 3
-): string {
+): string | null {
   if (!studentName) return '';
   const cleanName = studentName.trim().replace(/\s+/g, ' ');
   if (!cleanName) return '';
@@ -199,18 +205,26 @@ export function formatTimelineStudentName(
   // Com o tamanho oficial de 30px, 0.05em equivale a 1.5px por caractere.
   const letterSpacingPx = 1.5;
 
-  // Medição da largura real do nome em 1 linha via Canvas 2D em caixa alta (uppercase)
-  const fullTextWidth = measureTextWidth(cleanName.toUpperCase(), font, letterSpacingPx);
+  const fitsPredicate = (candidate: string): boolean => {
+    return measureTextWidth(candidate.toUpperCase(), font, letterSpacingPx) <= effectiveMaxWidth;
+  };
 
-  // Gatilho condicional: se couber no espaço da folha A4, retorna o nome original 100% intacto em 1 linha
-  if (fullTextWidth <= effectiveMaxWidth) {
+  // 1. Gatilho condicional: se couber no espaço da folha A4, retorna o nome original 100% intacto em 1 linha
+  if (fitsPredicate(cleanName)) {
     return cleanName;
   }
 
-  // Abreviação cirúrgica semântica, acionada somente para nomes que estourem o espaço da folha:
-  return progressiveAbbreviateName(cleanName, (candidate) => {
-    return measureTextWidth(candidate.toUpperCase(), font, letterSpacingPx) <= effectiveMaxWidth;
-  });
+  // 2. Abreviação cirúrgica semântica progressiva
+  const abbreviatedCandidate = progressiveAbbreviateName(cleanName, fitsPredicate);
+
+  // 3. Validação geométrica estrita: confirma que o candidato realmente satisfaz o predicado
+  if (abbreviatedCandidate && fitsPredicate(abbreviatedCandidate)) {
+    return abbreviatedCandidate;
+  }
+
+  // 4. Caso extremo: se nenhuma combinação respeitando as regras linguísticas couber,
+  // retorna null explicitamente para validação, garantindo que nunca é retornado um nome maior que a caixa.
+  return null;
 }
 
 /**
@@ -243,9 +257,10 @@ export function formatCarometroStudentName(
   }
 
   // Estourou a célula da grade: aciona abreviação cirúrgica progressiva
-  return progressiveAbbreviateName(cleanName, (candidate) => {
+  const abbreviated = progressiveAbbreviateName(cleanName, (candidate) => {
     return canTextFitInLines(candidate, font, effectiveMaxWidth, maxLines, true);
   });
+  return abbreviated ?? cleanName;
 }
 
 /**
