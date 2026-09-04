@@ -22,6 +22,9 @@ import {
   Image as ImageIcon,
   FileText,
   UserCheck,
+  Copy,
+  Calendar,
+  IdCard,
 } from 'lucide-react';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
 import {
@@ -185,6 +188,45 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
       return new Date(isoString).toLocaleDateString('pt-BR');
     } catch {
       return isoString;
+    }
+  };
+
+  // Estado e handler para cópia rápida do nome para a área de transferência
+  const [copiedName, setCopiedName] = useState(false);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setCopiedName(false);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+  }, [student.id]);
+
+  const handleCopyName = async () => {
+    if (!student?.name) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(student.name);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = student.name;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedName(true);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedName(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Falha ao copiar nome:', err);
     }
   };
 
@@ -440,28 +482,48 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
         {/* CABEÇALHO DA FICHA DO ALUNO */}
         {/* ================================================== */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 bg-white">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 leading-snug">
+          <div className="min-w-0">
+            {/* Linha 1: Nome em destaque + Botão de Copiar Nome + Badge indicativo do tipo */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-slate-900 leading-snug">
                 {student.name}
               </h2>
-              <Badge variant={chronologicalRecords.length > 0 ? 'success' : 'neutral'} size="sm">
-                {isCollaborator
-                  ? chronologicalRecords.length > 0
-                    ? `${chronologicalRecords.length} período${chronologicalRecords.length > 1 ? 's' : ''}`
-                    : 'Sem período'
-                  : chronologicalRecords.length > 0
-                  ? `${chronologicalRecords.length} matrícula${chronologicalRecords.length > 1 ? 's' : ''}`
-                  : 'Sem matrícula'}
+              <button
+                type="button"
+                onClick={handleCopyName}
+                title={copiedName ? 'Copiado!' : 'Copiar nome completo'}
+                className="relative inline-flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer shrink-0"
+                aria-label={isCollaborator ? 'Copiar nome do colaborador' : 'Copiar nome do aluno'}
+              >
+                {copiedName ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600 animate-in zoom-in-75 duration-150" />
+                    <span className="absolute -top-7 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-slate-800 text-white text-[10px] font-medium rounded shadow-sm whitespace-nowrap pointer-events-none animate-in fade-in duration-150 z-20">
+                      Copiado!
+                    </span>
+                  </>
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+              <Badge variant={isCollaborator ? 'neutral' : 'info'} size="sm">
+                {isCollaborator ? 'Colaborador' : 'Aluno'}
               </Badge>
             </div>
-            <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-              <span>
-                {isCollaborator ? 'Código / Matrícula' : 'Matrícula'}{' '}
-                <strong className="font-mono font-semibold text-slate-700">{student.enrollment}</strong>
-              </span>
-              <span>·</span>
-              <span>Cadastro {formatDate(student.createdAt)}</span>
+
+            {/* Linha 2 (Metadados alinhados em barra horizontal limpa) */}
+            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 whitespace-nowrap">
+              <div className="flex items-center gap-1.5">
+                <IdCard className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>{isCollaborator ? 'Código / Matrícula:' : 'Matrícula:'}</span>
+                <strong className="font-mono font-semibold text-slate-700">{student.enrollment || '—'}</strong>
+              </div>
+              <span className="text-slate-300 select-none">•</span>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Cadastrado em:</span>
+                <span className="font-medium text-slate-700">{formatDate(student.createdAt)}</span>
+              </div>
             </div>
           </div>
 
