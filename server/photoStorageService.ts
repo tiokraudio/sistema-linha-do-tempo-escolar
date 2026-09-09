@@ -17,68 +17,260 @@ if (!fs.existsSync(PHOTOS_DIR)) {
 }
 
 /**
- * Checks whether a given string is a Base64-encoded image or Data URI.
+ * Limite máximo para imagem decodificada: 20 MB.
+ */
+export const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
+
+/**
+ * Formatos de imagem estritamente aceitos para novos uploads: JPEG, PNG e WEBP.
+ */
+export type SupportedImageFormat = 'jpeg' | 'png' | 'webp';
+
+/**
+ * Erro de validação de imagem com mensagens limpas e seguras.
+ */
+export class PhotoValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PhotoValidationError';
+  }
+}
+
+/**
+ * Cabeçalhos Data URI estritamente permitidos:
+ * - data:image/jpeg;base64,
+ * - data:image/jpg;base64,
+ * - data:image/png;base64,
+ * - data:image/webp;base64,
+ */
+const STRICT_DATA_URI_REGEX = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
+
+/**
+ * Detecta se uma string representa uma URL ou referência de foto já existente no sistema.
+ */
+export function isExistingPhotoReference(str: string): boolean {
+  if (!str || typeof str !== 'string') return false;
+  const trimmed = str.trim();
+  return (
+    trimmed.startsWith('/uploads/photos/') ||
+    trimmed.startsWith('uploads/photos/') ||
+    trimmed.startsWith('/uploads/') ||
+    trimmed.startsWith('uploads/') ||
+    trimmed.startsWith('/api/photos/') ||
+    trimmed.startsWith('api/photos/') ||
+    trimmed.startsWith('/api/public-logo') ||
+    trimmed.startsWith('api/public-logo') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:')
+  );
+}
+
+/**
+ * Verifica se uma string pretende ser uma imagem codificada em Base64 ou Data URI.
  */
 export function isBase64Image(data: unknown): boolean {
   if (!data || typeof data !== 'string') return false;
   const trimmed = data.trim();
-  if (trimmed.startsWith('data:image/')) return true;
-  // Raw Base64 heuristic: at least 500 chars, only base64 charset, starts like image
-  if (trimmed.length > 500 && /^[A-Za-z0-9+/=\s]+$/.test(trimmed.slice(0, 100))) {
+  if (!trimmed) return false;
+
+  // URLs já existentes não são novos uploads
+  if (isExistingPhotoReference(trimmed)) {
+    return false;
+  }
+
+  // Qualquer Data URI
+  if (trimmed.startsWith('data:')) {
     return true;
   }
+
+  // Base64 bruto substancial
+  if (trimmed.length >= 64 && /^[A-Za-z0-9+/=\r\n\t\s]+$/.test(trimmed)) {
+    return true;
+  }
+
   return false;
 }
 
 /**
- * Extracts image extension and binary buffer from a Base64 string or Data URI.
+ * Detecta o formato real da imagem através dos magic bytes binários obrigatórios:
+ * - JPEG: FF D8 FF
+ * - PNG:  89 50 4E 47 0D 0A 1A 0A
+ * - WEBP: RIFF nos bytes 0..3 e WEBP nos bytes 8..11
  */
-function extractImageBufferAndExt(base64Str: string): { buffer: Buffer; ext: string } {
-  let ext = '.jpg';
-  let cleanBase64 = base64Str.trim();
+export function detectFormatFromMagicBytes(buffer: Buffer): SupportedImageFormat | null {
+  if (!buffer || buffer.length < 3) return null;
 
-  if (cleanBase64.startsWith('data:image/')) {
-    const headerMatch = cleanBase64.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,/);
-    if (headerMatch) {
-      const mimeSubtype = headerMatch[1].toLowerCase();
-      if (mimeSubtype === 'png') ext = '.png';
-      else if (mimeSubtype === 'webp') ext = '.webp';
-      else if (mimeSubtype === 'gif') ext = '.gif';
-      else if (mimeSubtype === 'jpeg' || mimeSubtype === 'jpg') ext = '.jpg';
-      else ext = `.${mimeSubtype}`;
-      cleanBase64 = cleanBase64.slice(headerMatch[0].length);
-    }
+  // 1. JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'jpeg';
   }
 
-  // Remove any remaining whitespace / newlines from base64
-  cleanBase64 = cleanBase64.replace(/\s+/g, '');
+  // 2. PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return 'png';
+  }
+
+  // 3. WEBP: RIFF (bytes 0..3) + WEBP (bytes 8..11)
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return 'webp';
+  }
+
+  return null;
+}
+
+/**
+ * Inspeciona assinaturas de formatos não permitidos para mensagens claras de erro.
+ */
+function inspectDisallowedFormat(buffer: Buffer): string | null {
+  if (!buffer || buffer.length < 4) return null;
+
+  // GIF: GIF87a ou GIF89a (47 49 46 38)
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x38
+  ) {
+    return 'GIF';
+  }
+
+  // SVG / XML textual
+  const sample = buffer.slice(0, 100).toString('utf8').trim().toLowerCase();
+  if (sample.startsWith('<?xml') || sample.startsWith('<svg') || sample.includes('<svg')) {
+    return 'SVG';
+  }
+
+  return null;
+}
+
+/**
+ * Validação rigorosa e extração do buffer binário da imagem:
+ * - Valida cabeçalho Data URI (quando presente)
+ * - Valida charset Base64 completo e padding
+ * - Decodifica Buffer binário
+ * - Valida que buffer é não vazio
+ * - Valida limite individual de 20 MB
+ * - Valida magic bytes reais (JPEG, PNG ou WEBP)
+ * - Rejeita divergência entre MIME declarado e magic bytes
+ * - Determina extensão SOMENTE pelo formato real (.jpg, .png, .webp)
+ */
+export function validateAndExtractImageBuffer(dataStr: string): {
+  buffer: Buffer;
+  format: SupportedImageFormat;
+  ext: '.jpg' | '.png' | '.webp';
+} {
+  const trimmed = dataStr.trim();
+  if (!trimmed) {
+    throw new PhotoValidationError('Conteúdo de imagem vazio.');
+  }
+
+  let declaredFormat: SupportedImageFormat | null = null;
+  let base64Payload = trimmed;
+
+  if (trimmed.startsWith('data:')) {
+    const lowerHead = trimmed.slice(0, 50).toLowerCase();
+    if (lowerHead.startsWith('data:image/svg')) {
+      throw new PhotoValidationError('Formato SVG não é permitido. Apenas imagens JPEG, PNG e WEBP são aceitas.');
+    }
+    if (lowerHead.startsWith('data:image/gif')) {
+      throw new PhotoValidationError('Formato GIF não é permitido. Apenas imagens JPEG, PNG e WEBP são aceitas.');
+    }
+
+    const match = trimmed.match(STRICT_DATA_URI_REGEX);
+    if (!match) {
+      throw new PhotoValidationError(
+        'Cabeçalho Data URI inválido ou formato não permitido. Formatos aceitos: data:image/jpeg;base64,, data:image/jpg;base64,, data:image/png;base64, ou data:image/webp;base64,.'
+      );
+    }
+
+    const rawMime = match[1].toLowerCase();
+    declaredFormat = (rawMime === 'jpeg' || rawMime === 'jpg') ? 'jpeg' : (rawMime as SupportedImageFormat);
+    base64Payload = trimmed.slice(match[0].length);
+  }
+
+  // 1. Remover somente whitespace permitido
+  const cleanBase64 = base64Payload.replace(/[\r\n\t\s]+/g, '');
+  if (cleanBase64.length === 0) {
+    throw new PhotoValidationError('Conteúdo Base64 vazio.');
+  }
+
+  // 2. Comprimento do Base64 deve ser múltiplo de 4
+  if (cleanBase64.length % 4 !== 0) {
+    throw new PhotoValidationError('Conteúdo Base64 malformado: comprimento inválido ou padding incorreto.');
+  }
+
+  // 3. Validação estrita de charset e padding (A-Za-z0-9+/ com no máximo dois '=' no final)
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(cleanBase64)) {
+    throw new PhotoValidationError('Conteúdo Base64 inválido: caracteres não permitidos encontrados.');
+  }
+
+  // 4. Decodificação em Buffer binário
   const buffer = Buffer.from(cleanBase64, 'base64');
-
-  // If mime was not explicit, detect by magic numbers
-  if (buffer.length >= 4) {
-    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-      ext = '.jpg';
-    } else if (
-      buffer[0] === 0x89 &&
-      buffer[1] === 0x50 &&
-      buffer[2] === 0x4e &&
-      buffer[3] === 0x47
-    ) {
-      ext = '.png';
-    } else if (
-      buffer.length >= 12 &&
-      buffer.toString('ascii', 0, 4) === 'RIFF' &&
-      buffer.toString('ascii', 8, 12) === 'WEBP'
-    ) {
-      ext = '.webp';
-    }
+  if (!buffer || buffer.length === 0) {
+    throw new PhotoValidationError('Falha ao decodificar imagem Base64: conteúdo binário resultante vazio.');
   }
 
-  return { buffer, ext };
+  // 5. Validação de tamanho individual máximo (20 MB)
+  if (buffer.length > MAX_IMAGE_SIZE_BYTES) {
+    throw new PhotoValidationError('Tamanho da imagem excede o limite máximo permitido de 20MB.');
+  }
+
+  // 6. Validação dos magic bytes reais
+  const realFormat = detectFormatFromMagicBytes(buffer);
+  if (!realFormat) {
+    const disallowed = inspectDisallowedFormat(buffer);
+    if (disallowed) {
+      throw new PhotoValidationError(`Formato ${disallowed} não é permitido. Apenas imagens JPEG, PNG e WEBP são aceitas.`);
+    }
+    throw new PhotoValidationError('Assinatura de arquivo (magic bytes) inválida. O arquivo não é uma imagem JPEG, PNG ou WEBP real.');
+  }
+
+  // 7. Divergência entre MIME declarado e Magic Bytes
+  if (declaredFormat && declaredFormat !== realFormat) {
+    const declStr = declaredFormat === 'jpeg' ? 'image/jpeg' : `image/${declaredFormat}`;
+    throw new PhotoValidationError(
+      `MIME declarado (${declStr}) diverge do formato real dos bytes da imagem (${realFormat.toUpperCase()}).`
+    );
+  }
+
+  // 8. Extensão derivada estritamente dos magic bytes
+  let ext: '.jpg' | '.png' | '.webp';
+  if (realFormat === 'jpeg') {
+    ext = '.jpg';
+  } else if (realFormat === 'png') {
+    ext = '.png';
+  } else {
+    ext = '.webp';
+  }
+
+  return { buffer, format: realFormat, ext };
 }
 
 /**
  * Saves a photo from Base64 or Data URI directly to the local file system (data/uploads/photos/).
+ * Validates magic bytes, strict base64, size limits, and format constraints.
+ * Writes the exact decoded bytes with zero modification/compression.
  * Returns the relative public URL (e.g. `/uploads/photos/[year]_[studentId]_[timestamp]_[hash].jpg`).
  * If the input is already a relative URL or empty, returns it directly.
  */
@@ -96,42 +288,30 @@ export function savePhotoFromBase64(
     return '';
   }
 
-  // If already a relative URL or absolute URL, return as is
-  if (
-    trimmed.startsWith('/uploads/') ||
-    trimmed.startsWith('uploads/') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://')
-  ) {
-    return trimmed.startsWith('uploads/') ? `/${trimmed}` : trimmed;
+  // Se já for uma URL existente conhecida, preserva sem regravação
+  if (isExistingPhotoReference(trimmed)) {
+    return trimmed.startsWith('uploads/')
+      ? `/${trimmed}`
+      : trimmed.startsWith('api/photos/')
+      ? `/${trimmed}`
+      : trimmed;
   }
 
-  // If not a Base64 image, return as is
-  if (!isBase64Image(trimmed)) {
-    return trimmed;
-  }
+  // Validação rígida com erro explícito se inválido (não silencioso)
+  const { buffer, ext } = validateAndExtractImageBuffer(trimmed);
 
-  try {
-    const { buffer, ext } = extractImageBufferAndExt(trimmed);
-    if (buffer.length === 0) {
-      return '';
-    }
+  const safeYear = String(year || 'year').replace(/[^a-zA-Z0-9_-]/g, '') || 'year';
+  const safeStudentId = String(studentId || 'std').replace(/[^a-zA-Z0-9_-]/g, '') || 'std';
+  const timestamp = Date.now();
+  const randomHex = crypto.randomBytes(4).toString('hex');
+  const filename = `${safeYear}_${safeStudentId}_${timestamp}_${randomHex}${ext}`;
+  const destinationPath = path.join(PHOTOS_DIR, filename);
 
-    const safeYear = String(year || 'year').replace(/[^a-zA-Z0-9_-]/g, '') || 'year';
-    const safeStudentId = String(studentId || 'std').replace(/[^a-zA-Z0-9_-]/g, '') || 'std';
-    const timestamp = Date.now();
-    const randomHex = crypto.randomBytes(3).toString('hex');
-    const filename = `${safeYear}_${safeStudentId}_${timestamp}_${randomHex}${ext}`;
-    const destinationPath = path.join(PHOTOS_DIR, filename);
+  // Gravação física DIRETA dos bytes originais idênticos
+  fs.writeFileSync(destinationPath, buffer);
 
-    fs.writeFileSync(destinationPath, buffer);
-
-    const relativeUrl = `/uploads/photos/${filename}`;
-    return relativeUrl;
-  } catch (err) {
-    console.error('[PhotoStorage] Falha ao salvar foto em disco:', err);
-    return trimmed; // fallback
-  }
+  const relativeUrl = `/uploads/photos/${filename}`;
+  return relativeUrl;
 }
 
 /**
@@ -343,21 +523,25 @@ export function migrateBase64PhotosInStore(store: LocalStorageData): {
   if (Array.isArray(store.records)) {
     for (const record of store.records) {
       if (record.photoUrl && isBase64Image(record.photoUrl)) {
-        const originalLength = record.photoUrl.length;
-        const newUrl = savePhotoFromBase64(record.photoUrl, record.studentId, record.year);
-        record.photoUrl = newUrl;
-        savedBytesApprox += originalLength - newUrl.length;
-        migratedRecords++;
+        try {
+          const originalLength = record.photoUrl.length;
+          const newUrl = savePhotoFromBase64(record.photoUrl, record.studentId, record.year);
+          record.photoUrl = newUrl;
+          savedBytesApprox += originalLength - newUrl.length;
+          migratedRecords++;
 
-        // Atualizar referências nos crops se apontavam para base64
-        if (record.carometroCrop && isBase64Image(record.carometroCrop.photoUrl)) {
-          record.carometroCrop.photoUrl = newUrl;
-        }
-        if (record.carometroCircularCrop && isBase64Image(record.carometroCircularCrop.photoUrl)) {
-          record.carometroCircularCrop.photoUrl = newUrl;
-        }
-        if (record.autoFaceCrop && isBase64Image(record.autoFaceCrop.photoUrl)) {
-          record.autoFaceCrop.photoUrl = newUrl;
+          // Atualizar referências nos crops se apontavam para base64
+          if (record.carometroCrop && isBase64Image(record.carometroCrop.photoUrl)) {
+            record.carometroCrop.photoUrl = newUrl;
+          }
+          if (record.carometroCircularCrop && isBase64Image(record.carometroCircularCrop.photoUrl)) {
+            record.carometroCircularCrop.photoUrl = newUrl;
+          }
+          if (record.autoFaceCrop && isBase64Image(record.autoFaceCrop.photoUrl)) {
+            record.autoFaceCrop.photoUrl = newUrl;
+          }
+        } catch (err) {
+          console.warn(`[PhotoStorage Migration] Não foi possível migrar foto legada do aluno ${record.studentId}:`, err);
         }
       }
     }
@@ -374,15 +558,19 @@ export function migrateBase64PhotosInStore(store: LocalStorageData): {
 
       for (const p of items) {
         if (p && p.photoUrl && isBase64Image(p.photoUrl)) {
-          const originalLength = p.photoUrl.length;
-          const newUrl = savePhotoFromBase64(
-            p.photoUrl,
-            timeline.studentId,
-            String(p.year || timeline.year)
-          );
-          p.photoUrl = newUrl;
-          savedBytesApprox += originalLength - newUrl.length;
-          migratedTimelines++;
+          try {
+            const originalLength = p.photoUrl.length;
+            const newUrl = savePhotoFromBase64(
+              p.photoUrl,
+              timeline.studentId,
+              String(p.year || timeline.year)
+            );
+            p.photoUrl = newUrl;
+            savedBytesApprox += originalLength - newUrl.length;
+            migratedTimelines++;
+          } catch (err) {
+            console.warn(`[PhotoStorage Migration] Não foi possível migrar foto de timeline do aluno ${timeline.studentId}:`, err);
+          }
         }
       }
     }
@@ -390,11 +578,15 @@ export function migrateBase64PhotosInStore(store: LocalStorageData): {
 
   // 3. Migrar Logo da Escola se em Base64
   if (store.config?.schoolLogo && isBase64Image(store.config.schoolLogo)) {
-    const originalLength = store.config.schoolLogo.length;
-    const newLogoUrl = savePhotoFromBase64(store.config.schoolLogo, 'logo', 'school');
-    store.config.schoolLogo = newLogoUrl;
-    savedBytesApprox += originalLength - newLogoUrl.length;
-    migratedLogo = true;
+    try {
+      const originalLength = store.config.schoolLogo.length;
+      const newLogoUrl = savePhotoFromBase64(store.config.schoolLogo, 'logo', 'school');
+      store.config.schoolLogo = newLogoUrl;
+      savedBytesApprox += originalLength - newLogoUrl.length;
+      migratedLogo = true;
+    } catch (err) {
+      console.warn('[PhotoStorage Migration] Não foi possível migrar logotipo legado da escola:', err);
+    }
   }
 
   if (migratedRecords > 0 || migratedTimelines > 0 || migratedLogo) {

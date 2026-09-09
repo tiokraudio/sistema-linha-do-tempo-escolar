@@ -500,7 +500,10 @@ async function startServer() {
   // Atualizar perfil administrativo (nome, cargo, departamento, foto, preferências)
   app.put('/api/auth/profile', requireAuth, (req, res) => {
     try {
-      const { displayName, role, avatarUrl, department, preferences } = req.body;
+      let { displayName, role, avatarUrl, department, preferences } = req.body;
+      if (avatarUrl && isBase64Image(avatarUrl)) {
+        avatarUrl = savePhotoFromBase64(avatarUrl, 'admin', 'profile');
+      }
       const updated = updateAdminProfile({ displayName, role, avatarUrl, department, preferences });
       res.json({
         success: true,
@@ -706,23 +709,27 @@ async function startServer() {
   });
 
   app.put('/api/config', (req, res) => {
-    let logoUrl = req.body?.schoolLogo;
-    if (logoUrl && isBase64Image(logoUrl)) {
-      logoUrl = savePhotoFromBase64(logoUrl, 'logo', 'school');
-    } else if (logoUrl === '/api/public-logo' || logoUrl === 'api/public-logo') {
-      logoUrl = store.config?.schoolLogo;
+    try {
+      let logoUrl = req.body?.schoolLogo;
+      if (logoUrl && isBase64Image(logoUrl)) {
+        logoUrl = savePhotoFromBase64(logoUrl, 'logo', 'school');
+      } else if (logoUrl === '/api/public-logo' || logoUrl === 'api/public-logo') {
+        logoUrl = store.config?.schoolLogo;
+      }
+      store.config = {
+        ...store.config,
+        ...req.body,
+        ...(logoUrl !== undefined ? { schoolLogo: logoUrl } : {}),
+      };
+      saveData(store);
+      const hasLogo = Boolean(store.config?.schoolLogo && String(store.config.schoolLogo).trim().length > 0);
+      res.json({
+        ...store.config,
+        schoolLogo: hasLogo ? '/api/public-logo' : '',
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || 'Erro ao processar logotipo da escola.' });
     }
-    store.config = {
-      ...store.config,
-      ...req.body,
-      ...(logoUrl !== undefined ? { schoolLogo: logoUrl } : {}),
-    };
-    saveData(store);
-    const hasLogo = Boolean(store.config?.schoolLogo && String(store.config.schoolLogo).trim().length > 0);
-    res.json({
-      ...store.config,
-      schoolLogo: hasLogo ? '/api/public-logo' : '',
-    });
   });
 
   // Períodos Letivos Endpoints (Apenas anos de 4 dígitos)
@@ -1112,106 +1119,110 @@ async function startServer() {
   });
 
   app.post('/api/records', (req, res) => {
-    const { studentId, year, className, photoUrl, cropSettings, timelinePrimaryCrop, timelineSecondaryCrop, carometroCrop } = req.body;
+    try {
+      const { studentId, year, className, photoUrl, cropSettings, timelinePrimaryCrop, timelineSecondaryCrop, carometroCrop } = req.body;
 
-    const student = store.students.find((s) => s.id === studentId || (req.body.enrollment && s.enrollment === req.body.enrollment));
-    const isCollab = (student?.personType === 'collaborator') || (req.body.personType === 'collaborator');
+      const student = store.students.find((s) => s.id === studentId || (req.body.enrollment && s.enrollment === req.body.enrollment));
+      const isCollab = (student?.personType === 'collaborator') || (req.body.personType === 'collaborator');
 
-    if (!studentId || !year) {
-      return res.status(400).json({ error: isCollab ? 'Colaborador e período letivo são obrigatórios.' : 'Aluno e período letivo são obrigatórios.' });
-    }
+      if (!studentId || !year) {
+        return res.status(400).json({ error: isCollab ? 'Colaborador e período letivo são obrigatórios.' : 'Aluno e período letivo são obrigatórios.' });
+      }
 
-    if (!isCollab && !className) {
-      return res.status(400).json({ error: 'A turma é obrigatória para a matrícula do aluno.' });
-    }
+      if (!isCollab && !className) {
+        return res.status(400).json({ error: 'A turma é obrigatória para a matrícula do aluno.' });
+      }
 
-    // Check if period is active
-    const targetPeriod = store.periods.find((p) => String(p.name) === String(year) || p.id === String(year));
-    if (targetPeriod && targetPeriod.active === false) {
-      return res.status(400).json({
-        error: `O período letivo ${year} está inativo e não aceita novos registros. Ative o período em Configurações → Períodos Letivos.`,
-      });
-    }
-
-    const cleanClassName = isCollab ? '' : String(className || '').trim().toUpperCase();
-
-    // Pedagogical Progression and Period Duplicate Validation
-    const studentExistingRecords = store.records.filter((r) => r.studentId === (student ? student.id : studentId));
-
-    if (isCollab) {
-      const sameYear = studentExistingRecords.find((r) => String(r.year) === String(year));
-      if (sameYear) {
+      // Check if period is active
+      const targetPeriod = store.periods.find((p) => String(p.name) === String(year) || p.id === String(year));
+      if (targetPeriod && targetPeriod.active === false) {
         return res.status(400).json({
-          error: `Este colaborador já possui registro confirmado no período letivo ${year}.`,
+          error: `O período letivo ${year} está inativo e não aceita novos registros. Ative o período em Configurações → Períodos Letivos.`,
         });
       }
-    } else {
-      const progressionCheck = validateStudentProgression(
-        year,
-        cleanClassName,
-        studentExistingRecords
-      );
 
-      if (!progressionCheck.isValid) {
-        return res.status(400).json({
-          error: progressionCheck.errorMessage || 'Progressão escolar inválida.',
-        });
-      }
-    }
+      const cleanClassName = isCollab ? '' : String(className || '').trim().toUpperCase();
 
-    const resolvedStudentId = student ? student.id : studentId;
-    let cleanPhotoUrl = photoUrl || '';
-    if (cleanPhotoUrl && isBase64Image(cleanPhotoUrl)) {
-      cleanPhotoUrl = savePhotoFromBase64(cleanPhotoUrl, resolvedStudentId, String(year));
-    }
+      // Pedagogical Progression and Period Duplicate Validation
+      const studentExistingRecords = store.records.filter((r) => r.studentId === (student ? student.id : studentId));
 
-    const newRecord: AcademicYearRecord = {
-      id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      studentId: resolvedStudentId,
-      year: String(year),
-      className: cleanClassName,
-      photoUrl: cleanPhotoUrl,
-      cropSettings: cropSettings || timelinePrimaryCrop || { x: 50, y: 50, zoom: 1.0 },
-      timelinePrimaryCrop: timelinePrimaryCrop || cropSettings,
-      timelineSecondaryCrop: timelineSecondaryCrop,
-      carometroCrop: carometroCrop
-        ? {
-            x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
-            y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
-            zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
-            photoUrl: cleanPhotoUrl,
-            updatedAt: new Date().toISOString(),
-          }
-        : undefined,
-      createdAt: new Date().toISOString(),
-    };
+      if (isCollab) {
+        const sameYear = studentExistingRecords.find((r) => String(r.year) === String(year));
+        if (sameYear) {
+          return res.status(400).json({
+            error: `Este colaborador já possui registro confirmado no período letivo ${year}.`,
+          });
+        }
+      } else {
+        const progressionCheck = validateStudentProgression(
+          year,
+          cleanClassName,
+          studentExistingRecords
+        );
 
-    // Regra: se ano/período da matrícula for INFERIOR ao período letivo atual (< período atual),
-    // e o aluno possuir composição salva no período atual, invalida a composição atual.
-    const currentActivePeriod = getActiveAcademicPeriod();
-    let timelineRemoved = false;
-    let message = isCollab ? 'Período do colaborador registrado com sucesso.' : 'Matrícula confirmada com sucesso.';
-
-    if (!isCollab && currentActivePeriod) {
-      const activePeriodYearNum = Number(currentActivePeriod.name);
-      const targetYearNum = Number(year);
-
-      if (targetYearNum < activePeriodYearNum) {
-        const invalidation = invalidateCurrentTimelineComposition(student ? student.id : studentId, 'historical_enrollment_confirmed');
-        if (invalidation.timelineRemoved) {
-          timelineRemoved = true;
-          message = invalidation.message!;
+        if (!progressionCheck.isValid) {
+          return res.status(400).json({
+            error: progressionCheck.errorMessage || 'Progressão escolar inválida.',
+          });
         }
       }
-    }
 
-    store.records.push(newRecord);
-    saveData(store);
-    res.status(201).json({
-      ...newRecord,
-      timelineRemoved,
-      message,
-    });
+      const resolvedStudentId = student ? student.id : studentId;
+      let cleanPhotoUrl = photoUrl || '';
+      if (cleanPhotoUrl && isBase64Image(cleanPhotoUrl)) {
+        cleanPhotoUrl = savePhotoFromBase64(cleanPhotoUrl, resolvedStudentId, String(year));
+      }
+
+      const newRecord: AcademicYearRecord = {
+        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        studentId: resolvedStudentId,
+        year: String(year),
+        className: cleanClassName,
+        photoUrl: cleanPhotoUrl,
+        cropSettings: cropSettings || timelinePrimaryCrop || { x: 50, y: 50, zoom: 1.0 },
+        timelinePrimaryCrop: timelinePrimaryCrop || cropSettings,
+        timelineSecondaryCrop: timelineSecondaryCrop,
+        carometroCrop: carometroCrop
+          ? {
+              x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
+              y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
+              zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
+              photoUrl: cleanPhotoUrl,
+              updatedAt: new Date().toISOString(),
+            }
+          : undefined,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Regra: se ano/período da matrícula for INFERIOR ao período letivo atual (< período atual),
+      // e o aluno possuir composição salva no período atual, invalida a composição atual.
+      const currentActivePeriod = getActiveAcademicPeriod();
+      let timelineRemoved = false;
+      let message = isCollab ? 'Período do colaborador registrado com sucesso.' : 'Matrícula confirmada com sucesso.';
+
+      if (!isCollab && currentActivePeriod) {
+        const activePeriodYearNum = Number(currentActivePeriod.name);
+        const targetYearNum = Number(year);
+
+        if (targetYearNum < activePeriodYearNum) {
+          const invalidation = invalidateCurrentTimelineComposition(student ? student.id : studentId, 'historical_enrollment_confirmed');
+          if (invalidation.timelineRemoved) {
+            timelineRemoved = true;
+            message = invalidation.message!;
+          }
+        }
+      }
+
+      store.records.push(newRecord);
+      saveData(store);
+      res.status(201).json({
+        ...newRecord,
+        timelineRemoved,
+        message,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || 'Erro ao registrar matrícula.' });
+    }
   });
 
   app.put('/api/records/:id/crops', (req, res) => {
@@ -1309,82 +1320,86 @@ async function startServer() {
   });
 
   app.put('/api/records/:id/photo', (req, res) => {
-    const { id } = req.params;
-    const { photoUrl, cropSettings, carometroCrop, carometroCircularCrop } = req.body;
+    try {
+      const { id } = req.params;
+      const { photoUrl, cropSettings, carometroCrop, carometroCircularCrop } = req.body;
 
-    const record = store.records.find((r) => r.id === id);
-    if (!record) {
-      return res.status(404).json({ error: 'Matrícula/Registro não encontrado.' });
-    }
-
-    // Validação estrita: somente o período letivo atual permite alteração de fotografia
-    const activePeriod = getActiveAcademicPeriod();
-    if (!activePeriod || String(record.year) !== String(activePeriod.name)) {
-      return res.status(403).json({
-        error: 'Operação bloqueada: não é permitido alterar ou cadastrar fotografia de um período letivo anterior ou inativo.',
-      });
-    }
-
-    if (isPeriodClosed(record.year)) {
-      return res.status(403).json({
-        error: `O período letivo ${record.year} está FECHADO e não permite alteração de fotografia.`,
-      });
-    }
-
-    let timelineRemoved = false;
-    let message = 'Fotografia salva com sucesso.';
-
-    if (photoUrl !== undefined) {
-      let newPhoto = String(photoUrl);
-      if (isBase64Image(newPhoto)) {
-        newPhoto = savePhotoFromBase64(newPhoto, record.studentId, record.year);
+      const record = store.records.find((r) => r.id === id);
+      if (!record) {
+        return res.status(404).json({ error: 'Matrícula/Registro não encontrado.' });
       }
-      if (newPhoto !== record.photoUrl) {
-        record.photoUrl = newPhoto;
-        // Invalidação completa dos crops da foto anterior ao substituir ou remover
-        delete record.autoFaceCrop;
-        delete record.carometroCrop;
-        delete record.carometroCircularCrop;
-        delete record.timelinePrimaryCrop;
-        delete record.timelineSecondaryCrop;
-        record.cropSettings = { x: 50, y: 50, zoom: 1.0 };
 
-        // Invalida composição do período letivo atual caso exista
-        const invalidation = invalidateCurrentTimelineComposition(record.studentId, 'photo_changed');
-        if (invalidation.timelineRemoved) {
-          timelineRemoved = true;
-          message = invalidation.message!;
+      // Validação estrita: somente o período letivo atual permite alteração de fotografia
+      const activePeriod = getActiveAcademicPeriod();
+      if (!activePeriod || String(record.year) !== String(activePeriod.name)) {
+        return res.status(403).json({
+          error: 'Operação bloqueada: não é permitido alterar ou cadastrar fotografia de um período letivo anterior ou inativo.',
+        });
+      }
+
+      if (isPeriodClosed(record.year)) {
+        return res.status(403).json({
+          error: `O período letivo ${record.year} está FECHADO e não permite alteração de fotografia.`,
+        });
+      }
+
+      let timelineRemoved = false;
+      let message = 'Fotografia salva com sucesso.';
+
+      if (photoUrl !== undefined) {
+        let newPhoto = String(photoUrl);
+        if (isBase64Image(newPhoto)) {
+          newPhoto = savePhotoFromBase64(newPhoto, record.studentId, record.year);
+        }
+        if (newPhoto !== record.photoUrl) {
+          record.photoUrl = newPhoto;
+          // Invalidação completa dos crops da foto anterior ao substituir ou remover
+          delete record.autoFaceCrop;
+          delete record.carometroCrop;
+          delete record.carometroCircularCrop;
+          delete record.timelinePrimaryCrop;
+          delete record.timelineSecondaryCrop;
+          record.cropSettings = { x: 50, y: 50, zoom: 1.0 };
+
+          // Invalida composição do período letivo atual caso exista
+          const invalidation = invalidateCurrentTimelineComposition(record.studentId, 'photo_changed');
+          if (invalidation.timelineRemoved) {
+            timelineRemoved = true;
+            message = invalidation.message!;
+          }
         }
       }
-    }
-    if (cropSettings) {
-      record.cropSettings = {
-        x: typeof cropSettings.x === 'number' ? cropSettings.x : 50,
-        y: typeof cropSettings.y === 'number' ? cropSettings.y : 50,
-        zoom: typeof cropSettings.zoom === 'number' ? cropSettings.zoom : 1.0,
-      };
-    }
-    if (carometroCrop) {
-      record.carometroCrop = {
-        x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
-        y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
-        zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
-      };
-    }
-    if (carometroCircularCrop) {
-      record.carometroCircularCrop = {
-        x: typeof carometroCircularCrop.x === 'number' ? carometroCircularCrop.x : 50,
-        y: typeof carometroCircularCrop.y === 'number' ? carometroCircularCrop.y : 50,
-        zoom: typeof carometroCircularCrop.zoom === 'number' ? carometroCircularCrop.zoom : 1.0,
-      };
-    }
+      if (cropSettings) {
+        record.cropSettings = {
+          x: typeof cropSettings.x === 'number' ? cropSettings.x : 50,
+          y: typeof cropSettings.y === 'number' ? cropSettings.y : 50,
+          zoom: typeof cropSettings.zoom === 'number' ? cropSettings.zoom : 1.0,
+        };
+      }
+      if (carometroCrop) {
+        record.carometroCrop = {
+          x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
+          y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
+          zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
+        };
+      }
+      if (carometroCircularCrop) {
+        record.carometroCircularCrop = {
+          x: typeof carometroCircularCrop.x === 'number' ? carometroCircularCrop.x : 50,
+          y: typeof carometroCircularCrop.y === 'number' ? carometroCircularCrop.y : 50,
+          zoom: typeof carometroCircularCrop.zoom === 'number' ? carometroCircularCrop.zoom : 1.0,
+        };
+      }
 
-    saveData(store);
-    res.json({
-      ...record,
-      timelineRemoved,
-      message,
-    });
+      saveData(store);
+      res.json({
+        ...record,
+        timelineRemoved,
+        message,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || 'Erro ao processar fotografia.' });
+    }
   });
 
   app.put('/api/records/:id/carometro-crop', (req, res) => {
@@ -1621,69 +1636,73 @@ async function startServer() {
   });
 
   app.put('/api/records/:id', (req, res) => {
-    const { id } = req.params;
-    const { photoUrl, cropSettings, carometroCrop } = req.body;
+    try {
+      const { id } = req.params;
+      const { photoUrl, cropSettings, carometroCrop } = req.body;
 
-    const record = store.records.find((r) => r.id === id);
-    if (!record) {
-      return res.status(404).json({ error: 'Registro não encontrado.' });
-    }
-
-    if (photoUrl !== undefined || cropSettings !== undefined || carometroCrop !== undefined) {
-      const activePeriod = getActiveAcademicPeriod();
-      if (!activePeriod || String(record.year) !== String(activePeriod.name)) {
-        return res.status(403).json({
-          error: 'Operação bloqueada: não é permitido alterar fotografia ou ajustes sem um período letivo ativo ou de um período letivo anterior.',
-        });
+      const record = store.records.find((r) => r.id === id);
+      if (!record) {
+        return res.status(404).json({ error: 'Registro não encontrado.' });
       }
-    }
 
-    let timelineRemoved = false;
-    let message = 'Registro atualizado com sucesso.';
-
-    if (photoUrl !== undefined) {
-      let newPhoto = String(photoUrl);
-      if (isBase64Image(newPhoto)) {
-        newPhoto = savePhotoFromBase64(newPhoto, record.studentId, record.year);
-      }
-      if (newPhoto !== record.photoUrl) {
-        record.photoUrl = newPhoto;
-        // Invalidação completa dos crops da foto anterior ao substituir ou remover
-        delete record.autoFaceCrop;
-        delete record.carometroCrop;
-        delete record.timelinePrimaryCrop;
-        delete record.timelineSecondaryCrop;
-        record.cropSettings = { x: 50, y: 50, zoom: 1.0 };
-
-        // Invalida composição do período letivo atual caso exista
-        const invalidation = invalidateCurrentTimelineComposition(record.studentId, 'photo_changed');
-        if (invalidation.timelineRemoved) {
-          timelineRemoved = true;
-          message = invalidation.message!;
+      if (photoUrl !== undefined || cropSettings !== undefined || carometroCrop !== undefined) {
+        const activePeriod = getActiveAcademicPeriod();
+        if (!activePeriod || String(record.year) !== String(activePeriod.name)) {
+          return res.status(403).json({
+            error: 'Operação bloqueada: não é permitido alterar fotografia ou ajustes sem um período letivo ativo ou de um período letivo anterior.',
+          });
         }
       }
-    }
-    if (cropSettings) {
-      record.cropSettings = {
-        x: typeof cropSettings.x === 'number' ? cropSettings.x : 50,
-        y: typeof cropSettings.y === 'number' ? cropSettings.y : 50,
-        zoom: typeof cropSettings.zoom === 'number' ? cropSettings.zoom : 1.0,
-      };
-    }
-    if (carometroCrop) {
-      record.carometroCrop = {
-        x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
-        y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
-        zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
-      };
-    }
 
-    saveData(store);
-    res.json({
-      ...record,
-      timelineRemoved,
-      message,
-    });
+      let timelineRemoved = false;
+      let message = 'Registro atualizado com sucesso.';
+
+      if (photoUrl !== undefined) {
+        let newPhoto = String(photoUrl);
+        if (isBase64Image(newPhoto)) {
+          newPhoto = savePhotoFromBase64(newPhoto, record.studentId, record.year);
+        }
+        if (newPhoto !== record.photoUrl) {
+          record.photoUrl = newPhoto;
+          // Invalidação completa dos crops da foto anterior ao substituir ou remover
+          delete record.autoFaceCrop;
+          delete record.carometroCrop;
+          delete record.timelinePrimaryCrop;
+          delete record.timelineSecondaryCrop;
+          record.cropSettings = { x: 50, y: 50, zoom: 1.0 };
+
+          // Invalida composição do período letivo atual caso exista
+          const invalidation = invalidateCurrentTimelineComposition(record.studentId, 'photo_changed');
+          if (invalidation.timelineRemoved) {
+            timelineRemoved = true;
+            message = invalidation.message!;
+          }
+        }
+      }
+      if (cropSettings) {
+        record.cropSettings = {
+          x: typeof cropSettings.x === 'number' ? cropSettings.x : 50,
+          y: typeof cropSettings.y === 'number' ? cropSettings.y : 50,
+          zoom: typeof cropSettings.zoom === 'number' ? cropSettings.zoom : 1.0,
+        };
+      }
+      if (carometroCrop) {
+        record.carometroCrop = {
+          x: typeof carometroCrop.x === 'number' ? carometroCrop.x : 50,
+          y: typeof carometroCrop.y === 'number' ? carometroCrop.y : 50,
+          zoom: typeof carometroCrop.zoom === 'number' ? carometroCrop.zoom : 1.0,
+        };
+      }
+
+      saveData(store);
+      res.json({
+        ...record,
+        timelineRemoved,
+        message,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || 'Erro ao atualizar registro.' });
+    }
   });
 
   app.delete('/api/records/:id', (req, res) => {
@@ -1719,7 +1738,8 @@ async function startServer() {
 
   // Confirm Period Handler
   app.post('/api/confirm-period', (req, res) => {
-    const { year, enrollment, name, className, photoUrl, cropSettings } = req.body;
+    try {
+      const { year, enrollment, name, className, photoUrl, cropSettings } = req.body;
 
     if (!year || !className) {
       return res.status(400).json({ error: 'Período letivo e turma são obrigatórios.' });
@@ -1829,12 +1849,15 @@ async function startServer() {
     store.records.push(record);
     saveData(store);
 
-    res.json({
-      student,
-      record,
-      timelineRemoved,
-      message,
-    });
+      res.json({
+        student,
+        record,
+        timelineRemoved,
+        message,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message || 'Erro ao confirmar período letivo.' });
+    }
   });
 
   // Batch Import Students & Academic Records (ETAPA B.28.12)
