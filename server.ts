@@ -56,6 +56,10 @@ import {
   getAdminProfile,
   updateAdminProfile,
   requireAuth,
+  AUTH_COOKIE_NAME,
+  getSessionCookieOptions,
+  getClearCookieOptions,
+  extractTokenFromRequest,
 } from './server/authService';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -402,19 +406,14 @@ async function startServer() {
   // 1. Status do acesso administrativo e validação da sessão ativa
   app.get('/api/auth/status', (req, res) => {
     const isSetup = isAuthSetup();
-    const authHeader = req.headers.authorization;
-    let isAuthenticated = false;
-    const currentEmail = isSetup ? getAdminEmail() : null;
-
-    if (isSetup && authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7).trim();
-      isAuthenticated = validateSession(token);
-    }
+    const token = extractTokenFromRequest(req);
+    const isAuthenticated = Boolean(isSetup && token && validateSession(token));
+    const currentEmail = isSetup && isAuthenticated ? getAdminEmail() : null;
 
     res.json({
       isSetup,
       isAuthenticated,
-      email: isAuthenticated ? currentEmail : null,
+      email: currentEmail,
     });
   });
 
@@ -423,6 +422,7 @@ async function startServer() {
     try {
       const { email, password } = req.body;
       const result = setupAdmin(email, password);
+      res.cookie(AUTH_COOKIE_NAME, result.token, getSessionCookieOptions(req));
       res.status(201).json({
         success: true,
         token: result.token,
@@ -439,6 +439,7 @@ async function startServer() {
     try {
       const { email, password } = req.body;
       const result = authenticate(email, password);
+      res.cookie(AUTH_COOKIE_NAME, result.token, getSessionCookieOptions(req));
       res.json({
         success: true,
         token: result.token,
@@ -455,13 +456,13 @@ async function startServer() {
     }
   });
 
-  // 4. Logout administrativo (revogação de sessão)
+  // 4. Logout administrativo (revogação de sessão e limpeza de cookie)
   app.post('/api/auth/logout', (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7).trim();
+    const token = extractTokenFromRequest(req);
+    if (token) {
       revokeSession(token);
     }
+    res.clearCookie(AUTH_COOKIE_NAME, getClearCookieOptions(req));
     res.json({ success: true, message: 'Sessão encerrada com sucesso.' });
   });
 
@@ -540,7 +541,8 @@ async function startServer() {
       if (!currentPassword || !newPassword) {
         return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórios.' });
       }
-      updateAdminPassword(currentPassword, newPassword);
+      const currentToken = extractTokenFromRequest(req);
+      updateAdminPassword(currentPassword, newPassword, currentToken || undefined);
       res.json({
         success: true,
         message: 'Senha administrativa atualizada com sucesso.',

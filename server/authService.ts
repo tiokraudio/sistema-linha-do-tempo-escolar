@@ -192,7 +192,7 @@ function purgeExpiredSessions() {
 /**
  * Creates a new authenticated session for the admin.
  */
-function createSession(): AdminSession {
+export function createSession(): AdminSession {
   purgeExpiredSessions();
   const token = crypto.randomBytes(32).toString('hex');
   const now = new Date();
@@ -215,6 +215,7 @@ function createSession(): AdminSession {
  */
 export function validateSession(token: string): boolean {
   if (!token || typeof token !== 'string') return false;
+  authStore = loadAuthStore();
   if (!isAuthSetup()) return false;
 
   const now = new Date().getTime();
@@ -239,6 +240,7 @@ export function validateSession(token: string): boolean {
  */
 export function revokeSession(token: string): boolean {
   if (!token) return false;
+  authStore = loadAuthStore();
   const initialLength = authStore.sessions.length;
   authStore.sessions = authStore.sessions.filter((s) => s.token !== token);
   if (authStore.sessions.length !== initialLength) {
@@ -396,7 +398,7 @@ export function updateAdminEmail(currentPassword: string, newEmailInput: string)
 /**
  * Updates administrator password. Requires current password verification.
  */
-export function updateAdminPassword(currentPassword: string, newPasswordInput: string): boolean {
+export function updateAdminPassword(currentPassword: string, newPasswordInput: string, currentToken?: string): boolean {
   if (!isAuthSetup() || !authStore.admin) {
     throw new Error('Acesso administrativo não configurado.');
   }
@@ -417,25 +419,136 @@ export function updateAdminPassword(currentPassword: string, newPasswordInput: s
   authStore.admin.passwordHash = newHash;
   authStore.admin.passwordSalt = newSalt;
   authStore.admin.updatedAt = new Date().toISOString();
+  // Revogação de segurança de todas as sessões anteriores após troca de senha
+  if (currentToken) {
+    authStore.sessions = authStore.sessions.filter((s) => s.token === currentToken);
+  } else {
+    authStore.sessions = [];
+  }
   saveAuthStore(authStore);
 
   return true;
 }
 
 /**
+ * Nome padronizado do cookie de sessão HTTP
+ */
+export const AUTH_COOKIE_NAME = 'auth_session';
+
+/**
+ * Utilitário leve e nativo para parser de cookies do cabeçalho HTTP.
+ */
+export function parseCookies(cookieHeader?: string): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader || typeof cookieHeader !== 'string') return list;
+
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const name = parts[0]?.trim();
+    if (!name) return;
+    const value = parts.slice(1).join('=').trim();
+    try {
+      list[name] = decodeURIComponent(value);
+    } catch {
+      list[name] = value;
+    }
+  });
+
+  return list;
+}
+
+/**
+ * Determina se a requisição atual deve utilizar o atributo Secure no cookie.
+ * - Em localhost / 127.0.0.1 em HTTP: false (evita quebrar login em desenvolvimento local).
+ * - Em conexões HTTPS ou atrás de proxies TLS (Cloud Run, Nginx com x-forwarded-proto): true.
+ */
+export function isSecureRequest(req: express.Request): boolean {
+  // 1. Conexão direta HTTPS
+  if (req.secure) return true;
+
+  // 2. Proxy reverso informando protocolo HTTPS (Cloud Run, Nginx, Caddy, etc.)
+  const proto = req.headers['x-forwarded-proto'];
+  if (typeof proto === 'string' && proto.toLowerCase().includes('https')) {
+    return true;
+  }
+
+  // 3. Em localhost / 127.0.0.1 em HTTP de desenvolvimento, nunca marcar Secure
+  const host = (req.headers.host || '').toLowerCase();
+  if (host.includes('localhost') || host.includes('127.0.0.1')) {
+    return false;
+  }
+
+  // 4. Em produção geral não local
+  return process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Retorna as opções padronizadas para emissão do cookie de sessão.
+ * Coerente com a duração da sessão no backend (7 dias).
+ */
+export function getSessionCookieOptions(
+  req: express.Request,
+  maxAgeMs: number = 7 * 24 * 60 * 60 * 1000
+): express.CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: 'strict',
+    path: '/',
+    maxAge: maxAgeMs,
+    secure: isSecureRequest(req),
+  };
+}
+
+/**
+ * Retorna as opções para remoção/expiração imediata do cookie no navegador.
+ */
+export function getClearCookieOptions(req: express.Request): express.CookieOptions {
+  return {
+    httpOnly: true,
+    sameSite: 'strict',
+    path: '/',
+    secure: isSecureRequest(req),
+  };
+}
+
+/**
+ * Extrai o token de sessão da requisição seguindo a ordem de precedência:
+ * 1. Cookie HTTP seguro (HttpOnly: auth_session)
+ * 2. Header Authorization (Bearer <token>) para compatibilidade transitória da API
+ *
+ * NOTA DE SEGURANÇA: req.query.token foi expressamente REMOVIDO para eliminar credenciais em URLs.
+ */
+export function extractTokenFromRequest(req: express.Request): string | null {
+  // 1. Prioridade máxima: Cookie de sessão HTTP
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const cookies = parseCookies(cookieHeader);
+    const sessionCookie = cookies[AUTH_COOKIE_NAME];
+    if (sessionCookie && typeof sessionCookie === 'string' && sessionCookie.trim()) {
+      return sessionCookie.trim();
+    }
+  }
+
+  // 2. Compatibilidade para chamadas da API via frontend: Authorization Bearer
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const bearerToken = authHeader.substring(7).trim();
+    if (bearerToken) {
+      return bearerToken;
+    }
+  }
+
+  // Query string ?token= NÃO é mais aceita para autenticação
+  return null;
+}
+
+/**
  * Reusable Express authentication middleware.
- * Supports token extraction from Authorization header (Bearer <token>)
- * or query parameter (?token=<token>) for media streaming and authorized file downloads.
+ * Autentica preferencialmente pelo Cookie de Sessão HttpOnly ou por Bearer Token.
+ * Query string ?token= NÃO autentica mais (HTTP 401).
  */
 export function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  let token: string | null = null;
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.substring(7).trim();
-  } else if (req.query && typeof req.query.token === 'string') {
-    token = req.query.token.trim();
-  }
+  const token = extractTokenFromRequest(req);
 
   if (!token) {
     return res.status(401).json({ error: 'Não autorizado. Sessão inválida ou não informada.' });

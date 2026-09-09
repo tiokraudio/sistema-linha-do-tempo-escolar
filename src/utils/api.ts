@@ -58,6 +58,11 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   let finalInit: RequestInit = init ? { ...init } : {};
 
+  // Garante envio automático de cookies same-origin (HttpOnly session cookie)
+  if (!finalInit.credentials) {
+    finalInit.credentials = 'same-origin';
+  }
+
   if (
     url.startsWith('/api/') ||
     url.includes('/api/') ||

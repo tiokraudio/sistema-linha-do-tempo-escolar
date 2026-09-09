@@ -1,9 +1,10 @@
-import { getAuthToken } from './api';
-
 /**
- * Converte exclusivamente referências conhecidas de fotos do sistema
+ * Converte referências de fotos do sistema
  * (/uploads/photos/<arquivo>, uploads/photos/<arquivo>, /api/photos/<arquivo>, api/photos/<arquivo>)
- * em uma URL autenticada segura (/api/photos/<arquivo>?token=<token>).
+ * em uma URL limpa (/api/photos/<arquivo>), sem anexar token na query string.
+ *
+ * A autenticação da tag <img> é realizada automaticamente pelo navegador
+ * através do cookie de sessão HttpOnly com SameSite=Strict na mesma origem.
  *
  * Preserva estritamente inalteradas:
  * - Data URIs (data:image/...)
@@ -22,7 +23,7 @@ export function getProtectedPhotoUrl(url: string | null | undefined): string {
     return trimmed;
   }
 
-  // 2. Rota pública do logotipo institucional (não requer token)
+  // 2. Rota pública do logotipo institucional (não requer autenticação nem token)
   if (trimmed === '/api/public-logo' || trimmed === 'api/public-logo') {
     return '/api/public-logo';
   }
@@ -59,12 +60,12 @@ export function getProtectedPhotoUrl(url: string | null | undefined): string {
     rawFilename = pathname.slice('api/photos/'.length);
   }
 
-  // Se NÃO for uma referência de foto conhecida, não modifica a URL (sem comportamento genérico)
+  // Se NÃO for uma referência de foto conhecida, não modifica a URL
   if (rawFilename === null) {
     return trimmed;
   }
 
-  // 5. Normalizar o filename: descarta query strings ou hashes anteriores para não duplicar token
+  // 5. Normalizar o filename: descarta query strings ou hashes anteriores (remove qualquer ?token= legado)
   let cleanFilename = rawFilename.split('?')[0].split('#')[0];
   while (cleanFilename.startsWith('/')) {
     cleanFilename = cleanFilename.slice(1);
@@ -81,12 +82,7 @@ export function getProtectedPhotoUrl(url: string | null | undefined): string {
     decodedFilename = cleanFilename;
   }
 
-  // 6. Montagem da URL autenticada usando a sessão atual
-  const token = getAuthToken();
+  // 6. Montagem da URL limpa: SEM token na query string
   const encodedName = encodeURIComponent(decodedFilename);
-
-  if (token) {
-    return `/api/photos/${encodedName}?token=${encodeURIComponent(token)}`;
-  }
   return `/api/photos/${encodedName}`;
 }
