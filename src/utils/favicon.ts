@@ -42,7 +42,18 @@ export function updateAppFavicon(schoolLogo?: string | null): void {
   if (typeof document === 'undefined') return;
 
   const hasCustomLogo = Boolean(schoolLogo && typeof schoolLogo === 'string' && schoolLogo.trim().length > 0);
-  const targetHref = hasCustomLogo ? (schoolLogo as string).trim() : DEFAULT_FAVICON_DATA_URL;
+  let targetHref = DEFAULT_FAVICON_DATA_URL;
+
+  if (hasCustomLogo) {
+    const cleanLogo = (schoolLogo as string).trim();
+    if (cleanLogo.startsWith('data:')) {
+      targetHref = cleanLogo;
+    } else {
+      // Para qualquer referência de logotipo no backend, utiliza estritamente o endpoint público /api/public-logo (sem token de autenticação)
+      targetHref = '/api/public-logo';
+    }
+  }
+
   const targetType = hasCustomLogo ? detectMimeType(targetHref) : 'image/svg+xml';
 
   // Remover links de favicon existentes para disparar atualização imediata no navegador

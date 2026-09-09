@@ -547,46 +547,76 @@ async function startServer() {
     }
   });
 
-  // --- CONFIGURAÇÃO PÚBLICA E FAVICON DINÂMICO ---
+  // --- CONFIGURAÇÃO PÚBLICA, FAVICON E LOGOTIPO INSTITUCIONAL ---
   const DEFAULT_FAVICON_SVG_RAW = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><rect width="32" height="32" rx="8" fill="#1e293b"/><path d="M16 6L4 12.5L16 19L28 12.5L16 6Z" fill="#3b82f6"/><path d="M8 15.5V22C8 24.5 11.5 26.5 16 26.5C20.5 26.5 24 24.5 24 22V15.5L16 20L8 15.5Z" fill="#60a5fa"/><circle cx="28" cy="15" r="1.5" fill="#93c5fd"/><line x1="28" y1="15" x2="28" y2="23" stroke="#93c5fd" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 
-  // Endpoint público para consulta do logotipo e dados básicos da escola (usado no arranque para favicon)
+  const isSchoolLogoFilename = (filenameInput: unknown): boolean => {
+    if (!filenameInput || typeof filenameInput !== 'string') return false;
+    const clean = filenameInput.split('?')[0].split('#')[0].trim();
+    if (!clean) return false;
+    const configuredLogo = store.config?.schoolLogo;
+    if (configuredLogo && typeof configuredLogo === 'string') {
+      if (configuredLogo.includes(clean)) return true;
+    }
+    return clean.includes('school_logo');
+  };
+
+  const serveSchoolLogo = (_req: express.Request, res: express.Response) => {
+    const logo = store.config?.schoolLogo;
+    if (!logo || typeof logo !== 'string' || !logo.trim()) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      return res.send(DEFAULT_FAVICON_SVG_RAW);
+    }
+
+    if (logo.startsWith('data:')) {
+      const parts = logo.split(',');
+      const meta = parts[0] || '';
+      const data = parts[1] || '';
+      const mimeMatch = meta.match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const buffer = Buffer.from(data, 'base64');
+      res.setHeader('Content-Type', mime);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.send(buffer);
+    }
+
+    const safeLogoPath = getSafePhotoFilePath(logo);
+    if (safeLogoPath && fs.existsSync(safeLogoPath) && fs.statSync(safeLogoPath).isFile()) {
+      const ext = path.extname(safeLogoPath).toLowerCase();
+      let mime = 'image/png';
+      if (ext === '.svg') mime = 'image/svg+xml';
+      else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+      else if (ext === '.webp') mime = 'image/webp';
+      else if (ext === '.gif') mime = 'image/gif';
+
+      res.setHeader('Content-Type', mime);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return fs.createReadStream(safeLogoPath).pipe(res);
+    }
+
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    return res.send(DEFAULT_FAVICON_SVG_RAW);
+  };
+
+  // Endpoint público específico SOMENTE para o logotipo institucional da escola (sem token)
+  app.get('/api/public-logo', serveSchoolLogo);
+
+  // Endpoint público para consulta do logotipo e dados básicos da escola (usado no arranque e favicon)
   app.get('/api/public-config', (req, res) => {
+    const hasLogo = Boolean(store.config?.schoolLogo && String(store.config.schoolLogo).trim().length > 0);
     res.json({
       schoolName: store.config?.schoolName || '',
-      schoolLogo: store.config?.schoolLogo || '',
+      schoolLogo: hasLogo ? '/api/public-logo' : '',
       photoHistorySlots: store.config?.photoHistorySlots ?? 15,
     });
   });
 
   // Rota de compatibilidade para requisições diretas de favicon no servidor
-  app.get('/favicon.ico', (req, res) => {
-    const logo = store.config?.schoolLogo;
-    if (logo && typeof logo === 'string' && logo.trim().length > 0) {
-      if (logo.startsWith('data:')) {
-        const parts = logo.split(',');
-        const meta = parts[0] || '';
-        const data = parts[1] || '';
-        const mimeMatch = meta.match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
-        const buffer = Buffer.from(data, 'base64');
-        res.setHeader('Content-Type', mime);
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        return res.send(buffer);
-      }
-      const safeLogoPath = getSafePhotoFilePath(logo);
-      if (safeLogoPath && fs.existsSync(safeLogoPath) && fs.statSync(safeLogoPath).isFile()) {
-        const ext = path.extname(safeLogoPath).toLowerCase();
-        const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.png' ? 'image/png' : 'image/jpeg';
-        res.setHeader('Content-Type', mime);
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        return fs.createReadStream(safeLogoPath).pipe(res);
-      }
-    }
-    res.setHeader('Content-Type', 'image/svg+xml');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    return res.send(DEFAULT_FAVICON_SVG_RAW);
-  });
+  app.get('/favicon.ico', serveSchoolLogo);
 
   // --- CONTROLADOR CENTRALIZADO DE FOTOS PROTEGIDAS ---
   // Transmite a foto física original sem qualquer alteração, compressão ou redimensionamento
@@ -627,31 +657,60 @@ async function startServer() {
   };
 
   // --- PROTEÇÃO RIGOROSA DA PASTA DE UPLOADS (LEGADO) ---
-  // Acesso direto sem autenticação é sumariamente bloqueado (HTTP 401).
-  // Requisições autenticadas são redirecionadas com segurança para o controlador de fotos.
-  app.get('/uploads/photos/:filename', requireAuth, serveProtectedPhoto);
-  app.get('/uploads/photos/*', requireAuth, serveProtectedPhoto);
+  // Acesso direto a fotos de alunos/colaboradores exige autenticação (HTTP 401).
+  // Acesso à logo institucional da escola é público.
+  app.get('/uploads/photos/:filename', (req, res, next) => {
+    const filenameParam = req.params.filename || (req.params as any)[0];
+    if (isSchoolLogoFilename(filenameParam)) {
+      return serveSchoolLogo(req, res);
+    }
+    return requireAuth(req, res, next);
+  }, serveProtectedPhoto);
+
+  app.get('/uploads/photos/*', (req, res, next) => {
+    const filenameParam = (req.params as any)[0];
+    if (isSchoolLogoFilename(filenameParam)) {
+      return serveSchoolLogo(req, res);
+    }
+    return requireAuth(req, res, next);
+  }, serveProtectedPhoto);
+
   app.use('/uploads', (req, res) => {
     res.status(401).json({ error: 'Não autorizado. Acesso direto a uploads revogado.' });
   });
 
-  // --- PROTEÇÃO GLOBAL DE TODAS AS ROTAS OPERACIONAIS ---
+  // --- ROTA OFICIAL DE FOTOS ---
+  // A logo institucional é pública; todas as fotos pessoais de alunos/colaboradores exigem autenticação
+  const handlePhotoRequest = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const filenameParam = req.params.filename || (req.params as any)[0];
+    if (isSchoolLogoFilename(filenameParam)) {
+      return serveSchoolLogo(req, res);
+    }
+    return requireAuth(req, res, () => serveProtectedPhoto(req, res));
+  };
+
+  app.get('/api/photos/:filename', handlePhotoRequest);
+  app.get('/api/photos/*', handlePhotoRequest);
+
+  // --- PROTEÇÃO GLOBAL DE TODAS AS DEMAIS ROTAS OPERACIONAIS ---
   // Todas as rotas /api/* abaixo exigem sessão administrativa válida (HTTP 401 caso não autenticado)
   app.use('/api', requireAuth);
 
-  // Rota oficial protegida de fotos (requer sessão administrativa via Bearer token ou ?token=)
-  app.get('/api/photos/:filename', serveProtectedPhoto);
-  app.get('/api/photos/*', serveProtectedPhoto);
-
   // Config Endpoints
   app.get('/api/config', (req, res) => {
-    res.json(store.config);
+    const hasLogo = Boolean(store.config?.schoolLogo && String(store.config.schoolLogo).trim().length > 0);
+    res.json({
+      ...store.config,
+      schoolLogo: hasLogo ? '/api/public-logo' : '',
+    });
   });
 
   app.put('/api/config', (req, res) => {
     let logoUrl = req.body?.schoolLogo;
     if (logoUrl && isBase64Image(logoUrl)) {
       logoUrl = savePhotoFromBase64(logoUrl, 'logo', 'school');
+    } else if (logoUrl === '/api/public-logo' || logoUrl === 'api/public-logo') {
+      logoUrl = store.config?.schoolLogo;
     }
     store.config = {
       ...store.config,
@@ -659,7 +718,11 @@ async function startServer() {
       ...(logoUrl !== undefined ? { schoolLogo: logoUrl } : {}),
     };
     saveData(store);
-    res.json(store.config);
+    const hasLogo = Boolean(store.config?.schoolLogo && String(store.config.schoolLogo).trim().length > 0);
+    res.json({
+      ...store.config,
+      schoolLogo: hasLogo ? '/api/public-logo' : '',
+    });
   });
 
   // Períodos Letivos Endpoints (Apenas anos de 4 dígitos)

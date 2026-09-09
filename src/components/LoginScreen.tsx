@@ -1,17 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { School, Lock, Mail, KeyRound, AlertCircle, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Footer } from './Footer';
+import { apiFetch } from '../utils/api';
 
 export const LoginScreen: React.FC = () => {
   const { isSetup, login, setup, sessionExpired, clearSessionExpired } = useAuth();
 
+  const [publicConfig, setPublicConfig] = useState<{ schoolName?: string; schoolLogo?: string } | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    apiFetch('/api/public-config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data) {
+          setPublicConfig(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,16 +104,24 @@ export const LoginScreen: React.FC = () => {
         {/* Brand Header */}
         <div className="text-center space-y-3">
           <div className="inline-flex p-3 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md">
-              <School className="w-6 h-6" />
-            </div>
+            {publicConfig?.schoolLogo ? (
+              <img
+                src={publicConfig.schoolLogo}
+                alt={publicConfig.schoolName || 'Logo da Escola'}
+                className="w-10 h-10 object-contain rounded-xl"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md">
+                <School className="w-6 h-6" />
+              </div>
+            )}
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-100 tracking-tight">
-              Linha do Tempo Escolar
+              {publicConfig?.schoolName || 'Linha do Tempo Escolar'}
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Sistema de Histórico Fotográfico e Matrículas
+              {publicConfig?.schoolName ? 'Linha do Tempo Escolar - Histórico Fotográfico' : 'Sistema de Histórico Fotográfico e Matrículas'}
             </p>
           </div>
         </div>

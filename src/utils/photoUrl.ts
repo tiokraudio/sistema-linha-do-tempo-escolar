@@ -1,59 +1,92 @@
 import { getAuthToken } from './api';
 
 /**
- * Converte qualquer referência de foto do sistema (/uploads/photos/... ou /api/photos/...)
- * em uma URL autenticada segura (/api/photos/:filename?token=<token>).
- * Preserva data: URIs, blob: URLs e URLs externas inalteradas.
+ * Converte exclusivamente referências conhecidas de fotos do sistema
+ * (/uploads/photos/<arquivo>, uploads/photos/<arquivo>, /api/photos/<arquivo>, api/photos/<arquivo>)
+ * em uma URL autenticada segura (/api/photos/<arquivo>?token=<token>).
+ *
+ * Preserva estritamente inalteradas:
+ * - Data URIs (data:image/...)
+ * - Blob URLs (blob:...)
+ * - Rota pública do logotipo institucional (/api/public-logo)
+ * - URLs externas
+ * - Qualquer rota que não seja foto pessoal protegida
  */
 export function getProtectedPhotoUrl(url: string | null | undefined): string {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
 
-  // Data URIs e Blob URLs não necessitam de requisição ao servidor
+  // 1. Data URIs e Blob URLs não necessitam de requisição ao servidor
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
     return trimmed;
   }
 
-  // URLs absolutas externas (ex: CDN ou outro host)
+  // 2. Rota pública do logotipo institucional (não requer token)
+  if (trimmed === '/api/public-logo' || trimmed === 'api/public-logo') {
+    return '/api/public-logo';
+  }
+
+  // 3. Resolução de caminhos provenientes de URLs absolutas
+  let pathname = trimmed;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
-      if (typeof window !== 'undefined' && parsed.origin !== window.location.origin) {
+      // Se a URL absoluta contiver um caminho de fotos do sistema, extrai o pathname
+      if (
+        parsed.pathname.includes('/uploads/photos/') ||
+        parsed.pathname.includes('/api/photos/')
+      ) {
+        pathname = parsed.pathname;
+      } else {
+        // URL externa legítima fora do escopo de fotos internas: preservar inalterada
         return trimmed;
       }
-      return getProtectedPhotoUrl(parsed.pathname + parsed.search);
     } catch {
       return trimmed;
     }
   }
 
+  // 4. Identificar estritamente referências de fotos conhecidas
+  let rawFilename: string | null = null;
+  if (pathname.startsWith('/uploads/photos/')) {
+    rawFilename = pathname.slice('/uploads/photos/'.length);
+  } else if (pathname.startsWith('uploads/photos/')) {
+    rawFilename = pathname.slice('uploads/photos/'.length);
+  } else if (pathname.startsWith('/api/photos/')) {
+    rawFilename = pathname.slice('/api/photos/'.length);
+  } else if (pathname.startsWith('api/photos/')) {
+    rawFilename = pathname.slice('api/photos/'.length);
+  }
+
+  // Se NÃO for uma referência de foto conhecida, não modifica a URL (sem comportamento genérico)
+  if (rawFilename === null) {
+    return trimmed;
+  }
+
+  // 5. Normalizar o filename: descarta query strings ou hashes anteriores para não duplicar token
+  let cleanFilename = rawFilename.split('?')[0].split('#')[0];
+  while (cleanFilename.startsWith('/')) {
+    cleanFilename = cleanFilename.slice(1);
+  }
+  if (!cleanFilename) {
+    return '';
+  }
+
+  // Decodifica caso já tenha vindo codificado, evitando dupla codificação (%2520)
+  let decodedFilename: string;
+  try {
+    decodedFilename = decodeURIComponent(cleanFilename);
+  } catch {
+    decodedFilename = cleanFilename;
+  }
+
+  // 6. Montagem da URL autenticada usando a sessão atual
   const token = getAuthToken();
+  const encodedName = encodeURIComponent(decodedFilename);
 
-  let filename = '';
-  if (trimmed.startsWith('/uploads/photos/')) {
-    filename = trimmed.slice('/uploads/photos/'.length);
-  } else if (trimmed.startsWith('uploads/photos/')) {
-    filename = trimmed.slice('uploads/photos/'.length);
-  } else if (trimmed.startsWith('/api/photos/')) {
-    filename = trimmed.slice('/api/photos/'.length);
-  } else if (trimmed.startsWith('api/photos/')) {
-    filename = trimmed.slice('api/photos/'.length);
+  if (token) {
+    return `/api/photos/${encodedName}?token=${encodeURIComponent(token)}`;
   }
-
-  if (filename) {
-    const cleanFilename = filename.split('?')[0].split('#')[0];
-    if (token) {
-      return `/api/photos/${encodeURIComponent(cleanFilename)}?token=${encodeURIComponent(token)}`;
-    }
-    return `/api/photos/${encodeURIComponent(cleanFilename)}`;
-  }
-
-  // Caso seja outra rota relativa do sistema que exija token
-  if (token && (trimmed.startsWith('/uploads/') || trimmed.startsWith('/api/'))) {
-    const clean = trimmed.split('?')[0].split('#')[0];
-    return `${clean}?token=${encodeURIComponent(token)}`;
-  }
-
-  return trimmed;
+  return `/api/photos/${encodedName}`;
 }
