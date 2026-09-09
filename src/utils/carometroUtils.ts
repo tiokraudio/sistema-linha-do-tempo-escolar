@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { Student, AcademicYearRecord, CropSettings, CarometroCropSettings, AutoFaceCropSettings, SchoolConfig } from '../types';
 import { createA4JsPdf, addPngPageToA4Pdf, saveA4Pdf, captureA4ElementToPng } from './pdfGenerator';
+import { getProtectedPhotoUrl } from './photoUrl';
 
 export type CarometroItemStatus =
   | 'missing_photo' // "Sem foto"
@@ -82,7 +83,7 @@ export function loadImageAsync(url: string): Promise<HTMLImageElement> {
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Falha ao carregar imagem: ${url}`));
-    img.src = url;
+    img.src = getProtectedPhotoUrl(url);
     if (img.complete) resolve(img);
   });
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CropSettings, Student, AcademicYearRecord } from '../types';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { Sparkles, ZoomIn, X, RotateCcw, Image as ImageIcon, CheckCircle2, AlertCircle, Lock, HelpCircle } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -197,7 +198,7 @@ export const AdjustPhotoModal: React.FC<AdjustPhotoModalProps> = ({
         ctx.restore();
       }
     };
-    img.src = photoUrl;
+    img.src = getProtectedPhotoUrl(photoUrl);
   }, [isOpen, photoUrl, currentCrop.x, currentCrop.y, currentCrop.zoom, activeTab]);
 
   if (!isOpen || !record) return null;

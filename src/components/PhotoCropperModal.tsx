@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CropSettings } from '../types';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { Sparkles, Move, ZoomIn, Check, X, RotateCcw } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -78,7 +79,7 @@ export const PhotoCropperModal: React.FC<PhotoCropperModalProps> = ({
 
       ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
     };
-    img.src = photoUrl;
+    img.src = getProtectedPhotoUrl(photoUrl);
   }, [isOpen, photoUrl, crop.x, crop.y, crop.zoom, isPrimary]);
 
   if (!isOpen || !photoUrl) return null;
@@ -173,7 +174,7 @@ export const PhotoCropperModal: React.FC<PhotoCropperModalProps> = ({
           >
             {/* Full Original Image */}
             <img
-              src={photoUrl}
+              src={getProtectedPhotoUrl(photoUrl)}
               alt="Original do aluno"
               onLoad={(e) => {
                 const img = e.currentTarget;
@@ -199,7 +200,7 @@ export const PhotoCropperModal: React.FC<PhotoCropperModalProps> = ({
               {/* Optional secondary frame overlay */}
               {!isPrimary && frameOverlayUrl && (
                 <img
-                  src={frameOverlayUrl}
+                  src={getProtectedPhotoUrl(frameOverlayUrl)}
                   alt="Moldura"
                   className="absolute inset-0 w-full h-full object-fill pointer-events-none z-10"
                 />

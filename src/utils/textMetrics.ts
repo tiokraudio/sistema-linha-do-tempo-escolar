@@ -12,6 +12,37 @@ let sharedCanvas: HTMLCanvasElement | null = null;
 let sharedContext: CanvasRenderingContext2D | null = null;
 
 /**
+ * Normaliza uma lista ou nome de família de fontes CSS para compatibilidade estrita
+ * com o padrão CSS Font Shorthand e a Canvas 2D API (ctx.font).
+ *
+ * Garante que nomes de fontes que contêm espaços (como 'Plus Jakarta Sans')
+ * recebam aspas simples obrigatórias pela especificação CSS/Canvas, enquanto
+ * palavras-chave genéricas (como sans-serif, serif) permaneçam sem aspas.
+ */
+export function normalizeFontFamily(fontFamily: string | null | undefined): string {
+  if (!fontFamily || typeof fontFamily !== 'string') return "'Montserrat', sans-serif";
+  const clean = fontFamily.trim();
+  if (!clean) return "'Montserrat', sans-serif";
+
+  const genericKeywords = new Set(['sans-serif', 'serif', 'monospace', 'cursive', 'fantasy', 'system-ui']);
+
+  return clean
+    .split(',')
+    .map((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return '';
+      const unquoted = trimmed.replace(/^['"]+|['"]+$/g, '').trim();
+      if (!unquoted) return '';
+      if (genericKeywords.has(unquoted.toLowerCase())) {
+        return unquoted.toLowerCase();
+      }
+      return `'${unquoted}'`;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
  * Mede a largura exata de uma string em pixels ANTES de renderizar via Canvas 2D API.
  *
  * @param text Texto a ser medido
@@ -42,8 +73,9 @@ export function measureTextWidth(text: string, font: string, letterSpacingPx: nu
     if (!ctx) return 0;
     ctx.font = font;
     let baseWidth = 0;
-    if ('letterSpacing' in ctx && letterSpacingPx > 0) {
-      (ctx as unknown as { letterSpacing: string }).letterSpacing = `${letterSpacingPx}px`;
+    const ctxWithLs = ctx as unknown as { letterSpacing?: string };
+    if (typeof ctxWithLs.letterSpacing === 'string') {
+      ctxWithLs.letterSpacing = `${letterSpacingPx}px`;
       baseWidth = ctx.measureText(text).width;
     } else {
       baseWidth = ctx.measureText(text).width + Math.max(0, text.length - 1) * letterSpacingPx;
@@ -53,8 +85,9 @@ export function measureTextWidth(text: string, font: string, letterSpacingPx: nu
 
   context.font = font;
   let baseWidth = 0;
-  if ('letterSpacing' in context && letterSpacingPx > 0) {
-    (context as unknown as { letterSpacing: string }).letterSpacing = `${letterSpacingPx}px`;
+  const contextWithLs = context as unknown as { letterSpacing?: string };
+  if (typeof contextWithLs.letterSpacing === 'string') {
+    contextWithLs.letterSpacing = `${letterSpacingPx}px`;
     baseWidth = context.measureText(text).width;
   } else {
     baseWidth = context.measureText(text).width + Math.max(0, text.length - 1) * letterSpacingPx;

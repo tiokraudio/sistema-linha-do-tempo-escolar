@@ -1,7 +1,8 @@
 import React from 'react';
 import { LayoutModel, SchoolConfig, CropSettings, DotPosition, PersonType, getModelBackgroundUrl } from '../types';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { VisualReferenceGrid } from './VisualReferenceGrid';
-import { formatTimelineStudentName } from '../utils/textMetrics';
+import { formatTimelineStudentName, normalizeFontFamily } from '../utils/textMetrics';
 import {
   A4_STANDARD_WIDTH,
   A4_STANDARD_HEIGHT,
@@ -143,7 +144,7 @@ export const CanvasPhoto: React.FC<CanvasPhotoProps> = ({
       }
     };
 
-    img.src = src;
+    img.src = getProtectedPhotoUrl(src);
 
     return () => {
       isMounted = false;
@@ -252,7 +253,8 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const modelNameLineHeight = model.studentNamePosition?.lineHeight || 1.18;
   const nameBoxWidthPx = (baseWidth * (model.studentNamePosition?.widthPercent ?? 100)) / 100;
   const nameFontWeight = model.studentNamePosition?.fontWeight || 'bold';
-  const nameFontFamily = model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif";
+  const rawFontFamily = model.studentNamePosition?.fontFamily || model.fontFamily || "'Montserrat', sans-serif";
+  const nameFontFamily = normalizeFontFamily(rawFontFamily);
   const nameFont = `${nameFontWeight} 30px ${nameFontFamily}`;
   const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 3);
 
@@ -341,7 +343,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
         {/* Layer 20 (z-20) — Main A4 Background PNG (Sits ON TOP of Primary Photo) */}
         {effectiveBgUrl && (
           <img
-            src={effectiveBgUrl}
+            src={getProtectedPhotoUrl(effectiveBgUrl)}
             alt="Background"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none', zIndex: 20 }}
             className="absolute inset-0 w-full h-full object-cover pointer-events-none z-20"
@@ -401,7 +403,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
               {/* Layer 40 (z-40): Secondary Frame PNG matching exact dot bounding box */}
               {model.secondaryFrameUrl && (
                 <img
-                  src={model.secondaryFrameUrl}
+                  src={getProtectedPhotoUrl(model.secondaryFrameUrl)}
                   alt="Moldura Secundária"
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none', zIndex: 40 }}
                   className="absolute inset-0 w-full h-full object-fill pointer-events-none z-40"
@@ -468,7 +470,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
               className="pointer-events-none z-50 flex items-center justify-start"
             >
               <img
-                src={schoolConfig.schoolLogo}
+                src={getProtectedPhotoUrl(schoolConfig.schoolLogo)}
                 alt="Logo Escola"
                 className="max-w-full max-h-full object-contain"
               />
@@ -559,7 +561,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
           >
             {model.mainYearType === 'image' && model.mainYearImageUrl ? (
               <img
-                src={model.mainYearImageUrl}
+                src={getProtectedPhotoUrl(model.mainYearImageUrl)}
                 alt="Ano Principal"
                 className={`max-w-full max-h-full object-contain pointer-events-none ${
                   model.yearPosition?.align === 'left'

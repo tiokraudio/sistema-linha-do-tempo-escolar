@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CropSettings, Student } from '../types';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { Sparkles, Move, ZoomIn, Check, X, RotateCcw } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -95,7 +96,7 @@ export const CarometroCropperModal: React.FC<CarometroCropperModalProps> = ({
 
       ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
     };
-    img.src = photoUrl;
+    img.src = getProtectedPhotoUrl(photoUrl);
   }, [isOpen, photoUrl, crop.x, crop.y, crop.zoom]);
 
   if (!isOpen || !photoUrl) return null;
@@ -229,7 +230,7 @@ export const CarometroCropperModal: React.FC<CarometroCropperModalProps> = ({
           >
             {/* Full Original Image */}
             <img
-              src={photoUrl}
+              src={getProtectedPhotoUrl(photoUrl)}
               alt={student.name}
               onLoad={(e) => {
                 const img = e.currentTarget;

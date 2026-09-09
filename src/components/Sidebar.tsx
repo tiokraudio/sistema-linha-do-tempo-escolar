@@ -3,6 +3,7 @@ import { ActiveTab } from '../types';
 import { Users, Briefcase, Camera, Clock, LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getLocalUserProfile } from '../utils/userProfile';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -141,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onOpe
           >
             {profile.avatarUrl ? (
               <img
-                src={profile.avatarUrl}
+                src={getProtectedPhotoUrl(profile.avatarUrl)}
                 alt={profile.displayName || 'Avatar'}
                 className="w-6 h-6 rounded-full object-cover border border-blue-500/30 shrink-0"
               />

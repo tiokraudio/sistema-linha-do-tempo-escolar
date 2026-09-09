@@ -37,6 +37,7 @@ import { Badge } from './ui/Badge';
 import { Toast } from './ui/Toast';
 import { Alert } from './ui/Alert';
 import { AdjustPhotoModal } from './AdjustPhotoModal';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 export interface StudentCentralModalProps {
   isOpen: boolean;
@@ -291,7 +292,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
 
       ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
     };
-    img.src = modalPhotoUrl;
+    img.src = getProtectedPhotoUrl(modalPhotoUrl);
   }, [photoModalRecord, modalPhotoUrl, modalCropSettings.x, modalCropSettings.y, modalCropSettings.zoom, latestRecord]);
 
   const handleOpenPhotoModal = (rec: AcademicYearRecord) => {
@@ -468,7 +469,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
     const filename = `${sanitizedStudentName}_${slot.year}.${ext}`;
 
     const link = document.createElement('a');
-    link.href = slot.photoUrl;
+    link.href = getProtectedPhotoUrl(slot.photoUrl);
     link.download = filename;
     document.body.appendChild(link);
     link.click();
@@ -686,7 +687,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                             title="Clique para ampliar a fotografia"
                           >
                             <img
-                              src={rec.photoUrl}
+                              src={getProtectedPhotoUrl(rec.photoUrl)}
                               alt={`Foto ${rec.year} - ${student.name}`}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               referrerPolicy="no-referrer"
@@ -950,7 +951,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                             className="relative inline-block overflow-hidden rounded-lg cursor-grab active:cursor-grabbing max-h-52 select-none border border-slate-800 bg-slate-950"
                           >
                             <img
-                              src={modalPhotoUrl}
+                              src={getProtectedPhotoUrl(modalPhotoUrl)}
                               alt={isCollaborator ? 'Original do colaborador' : 'Original do aluno'}
                               onLoad={(e) => {
                                 const img = e.currentTarget;
@@ -1125,7 +1126,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
               {/* Corpo com Imagem Ampliada */}
               <div className="p-4 flex items-center justify-center bg-slate-950/60 min-h-[320px] max-h-[68vh] overflow-hidden">
                 <img
-                  src={enlargedPhoto.url}
+                  src={getProtectedPhotoUrl(enlargedPhoto.url)}
                   alt={`Fotografia ampliada - ${enlargedPhoto.studentName} (${enlargedPhoto.year})`}
                   className="max-h-[62vh] max-w-full object-contain rounded-lg shadow-lg"
                   referrerPolicy="no-referrer"

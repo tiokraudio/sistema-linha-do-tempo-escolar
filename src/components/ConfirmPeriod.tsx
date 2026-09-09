@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Alert } from './ui/Alert';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { Toast } from './ui/Toast';
 import { Badge } from './ui/Badge';
 import { PageHeader } from './ui/PageHeader';
@@ -657,7 +658,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                   <div className="w-44 h-52 rounded-2xl border-2 border-slate-200 bg-slate-900 overflow-hidden flex items-center justify-center shadow-md">
                     {existingRecordForPeriod.photoUrl ? (
                       <img
-                        src={existingRecordForPeriod.photoUrl}
+                        src={getProtectedPhotoUrl(existingRecordForPeriod.photoUrl)}
                         alt={`Foto de ${selectedStudent.name} (${existingRecordForPeriod.year})`}
                         className="w-full h-full object-contain"
                       />
@@ -858,7 +859,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                   <div className="w-40 h-48 rounded-xl border-2 border-slate-200 bg-slate-900 overflow-hidden flex items-center justify-center shrink-0 shadow-inner">
                     {photoUrl ? (
                       <img
-                        src={photoUrl}
+                        src={getProtectedPhotoUrl(photoUrl)}
                         alt="Fotografia do Período"
                         className="w-full h-full object-contain"
                       />
@@ -1008,7 +1009,7 @@ export const ConfirmPeriod: React.FC<ConfirmPeriodProps> = ({
                           <td className="px-4 py-3">
                             {rec.photoUrl ? (
                               <img
-                                src={rec.photoUrl}
+                                src={getProtectedPhotoUrl(rec.photoUrl)}
                                 alt={`Foto ${rec.year}`}
                                 className="w-10 h-10 object-cover rounded-lg border border-slate-300 shadow-2xs"
                               />

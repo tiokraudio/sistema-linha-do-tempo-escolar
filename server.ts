@@ -39,6 +39,7 @@ import {
   deletePhotoFile,
   deletePhotoFilesForUrls,
   cleanupOrphanPhotos,
+  getSafePhotoFilePath,
   PHOTOS_DIR,
 } from './server/photoStorageService';
 import { sanitizeUtf8Strings, safeJsonParse } from './server/utf8Sanitizer';
@@ -377,12 +378,11 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '50mb' }));
 
-  // Static file serving for student/collaborator photos and system uploads
-  app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
-
   // UTF-8 & Mojibake sanitizer middleware for all API requests
   app.use('/api', (req, res, next) => {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (!req.path.startsWith('/photos') && !req.path.includes('/download')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
     if (req.body && typeof req.body === 'object') {
       req.body = sanitizeUtf8Strings(req.body);
     }
@@ -574,15 +574,74 @@ async function startServer() {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         return res.send(buffer);
       }
+      const safeLogoPath = getSafePhotoFilePath(logo);
+      if (safeLogoPath && fs.existsSync(safeLogoPath) && fs.statSync(safeLogoPath).isFile()) {
+        const ext = path.extname(safeLogoPath).toLowerCase();
+        const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.png' ? 'image/png' : 'image/jpeg';
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        return fs.createReadStream(safeLogoPath).pipe(res);
+      }
     }
     res.setHeader('Content-Type', 'image/svg+xml');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.send(DEFAULT_FAVICON_SVG_RAW);
   });
 
+  // --- CONTROLADOR CENTRALIZADO DE FOTOS PROTEGIDAS ---
+  // Transmite a foto física original sem qualquer alteração, compressão ou redimensionamento
+  const serveProtectedPhoto = (req: express.Request, res: express.Response) => {
+    const filenameParam = req.params.filename || (req.params as any)[0];
+    const safeFilePath = getSafePhotoFilePath(filenameParam);
+
+    if (!safeFilePath) {
+      return res.status(400).json({ error: 'Identificador de foto inválido.' });
+    }
+
+    if (!fs.existsSync(safeFilePath) || !fs.statSync(safeFilePath).isFile()) {
+      return res.status(404).json({ error: 'Foto não encontrada.' });
+    }
+
+    const ext = path.extname(safeFilePath).toLowerCase();
+    let mime = 'application/octet-stream';
+    if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+    else if (ext === '.png') mime = 'image/png';
+    else if (ext === '.webp') mime = 'image/webp';
+    else if (ext === '.gif') mime = 'image/gif';
+    else if (ext === '.svg') mime = 'image/svg+xml';
+
+    // Cabeçalhos de segurança estritos e cache privado do cliente
+    res.setHeader('Content-Type', mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-transform, max-age=86400');
+
+    // Streaming do arquivo original sem processamento de imagem
+    const stream = fs.createReadStream(safeFilePath);
+    stream.on('error', (err) => {
+      console.error('[PhotoService] Erro no streaming de foto:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erro ao transmitir arquivo de foto.' });
+      }
+    });
+    stream.pipe(res);
+  };
+
+  // --- PROTEÇÃO RIGOROSA DA PASTA DE UPLOADS (LEGADO) ---
+  // Acesso direto sem autenticação é sumariamente bloqueado (HTTP 401).
+  // Requisições autenticadas são redirecionadas com segurança para o controlador de fotos.
+  app.get('/uploads/photos/:filename', requireAuth, serveProtectedPhoto);
+  app.get('/uploads/photos/*', requireAuth, serveProtectedPhoto);
+  app.use('/uploads', (req, res) => {
+    res.status(401).json({ error: 'Não autorizado. Acesso direto a uploads revogado.' });
+  });
+
   // --- PROTEÇÃO GLOBAL DE TODAS AS ROTAS OPERACIONAIS ---
   // Todas as rotas /api/* abaixo exigem sessão administrativa válida (HTTP 401 caso não autenticado)
   app.use('/api', requireAuth);
+
+  // Rota oficial protegida de fotos (requer sessão administrativa via Bearer token ou ?token=)
+  app.get('/api/photos/:filename', serveProtectedPhoto);
+  app.get('/api/photos/*', serveProtectedPhoto);
 
   // Config Endpoints
   app.get('/api/config', (req, res) => {
@@ -2200,6 +2259,9 @@ async function startServer() {
       ...req.body,
       updatedAt: new Date().toISOString(),
     };
+    if (updatedModel.studentNamePosition) {
+      updatedModel.studentNamePosition.fontSizePx = 30;
+    }
 
     store.models[index] = updatedModel;
     saveData(store);

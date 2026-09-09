@@ -24,6 +24,7 @@ import {
 import { sortRecordsChronologically } from '../utils/studentPhotoHistory';
 import { getActiveAcademicYear } from '../utils/academicYears';
 import { apiFetch } from '../utils/api';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { Button } from './ui/Button';
 import { Alert } from './ui/Alert';
 import { AdjustPhotoModal } from './AdjustPhotoModal';
@@ -564,7 +565,7 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-7 h-7 rounded-lg bg-slate-200 overflow-hidden border border-slate-300 shrink-0">
                         <img
-                          src={confirmPhotoUrl}
+                          src={getProtectedPhotoUrl(confirmPhotoUrl)}
                           alt="Foto selecionada"
                           className="w-full h-full object-cover"
                         />

@@ -311,6 +311,7 @@ export function getDefaultSingleLayoutModel(slotsCount: number = 15): LayoutMode
       color: '#ffffff',
       align: 'center',
       fontWeight: 'bold',
+      fontFamily: 'Montserrat, sans-serif',
     },
     yearPosition: {
       xPercent: 82,
@@ -403,6 +404,7 @@ export function migrateDefaultLayoutModel(model: LayoutModel, slotsCount: number
       color: '#ffffff',
       align: 'center',
       fontWeight: 'bold',
+      fontFamily: model.studentNamePosition?.fontFamily || model.fontFamily || 'Montserrat, sans-serif',
       rotation: model.studentNamePosition?.rotation ?? 0,
     },
     yearPosition: {

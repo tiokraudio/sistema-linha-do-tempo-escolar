@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { SchoolConfig } from '../types';
 import { CarometroStudentItem } from '../utils/carometroUtils';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { formatCarometroName } from '../utils/textMetrics';
 import { A4PrintHeader, A4PrintFooter } from './A4PrintHeaderFooter';
 import {
@@ -121,7 +122,7 @@ const PhotoItemCanvas: React.FC<{
         canvas.dataset.status = 'error';
       }
     };
-    img.src = photoUrl;
+    img.src = getProtectedPhotoUrl(photoUrl);
 
     return () => {
       isMounted = false;

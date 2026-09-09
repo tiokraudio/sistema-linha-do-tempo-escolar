@@ -1,5 +1,6 @@
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
+import { getProtectedPhotoUrl, apiFetch } from './api';
 
 // In-memory image preload & DataURL cache
 const imageBase64Cache = new Map<string, string>();
@@ -21,9 +22,11 @@ export async function urlToDataUrl(url: string): Promise<string> {
     return imageBase64Cache.get(cleanUrl)!;
   }
 
+  const authenticatedUrl = getProtectedPhotoUrl(cleanUrl);
+
   // Attempt 1: Fetch directly as raw Blob and convert via FileReader (Zero quality loss, preserves original bytes)
   try {
-    const response = await fetch(cleanUrl);
+    const response = await apiFetch(authenticatedUrl);
     if (response.ok) {
       const blob = await response.blob();
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -85,7 +88,7 @@ export async function urlToDataUrl(url: string): Promise<string> {
         }
       };
       img.onerror = () => resolve(cleanUrl);
-      img.src = cleanUrl;
+      img.src = authenticatedUrl;
     });
 
     if (base64 && base64.startsWith('data:image/')) {

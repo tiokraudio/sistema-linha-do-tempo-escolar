@@ -21,6 +21,7 @@ import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { FormField, inputClasses } from './ui/FormField';
 import { apiFetch } from '../utils/api';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import {
   getLocalUserProfile,
   updateServerUserProfile,
@@ -483,7 +484,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white shadow-xs ring-2 ring-slate-200 flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700 text-white shrink-0 select-none">
               {profile.avatarUrl ? (
                 <img
-                  src={profile.avatarUrl}
+                  src={getProtectedPhotoUrl(profile.avatarUrl)}
                   alt={profile.displayName || 'Avatar'}
                   className="w-full h-full object-cover"
                 />

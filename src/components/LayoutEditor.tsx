@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { LayoutModel, SchoolConfig, DotPosition, TextElementPosition, PersonType, getModelBackgroundUrl } from '../types';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { getDefaultSingleLayoutModel, ensureModelConfigurations, createDefaultDotsForConfig } from '../utils/defaultLayout';
 import { VisualReferenceGrid } from './VisualReferenceGrid';
 import { Button } from './ui/Button';
@@ -536,8 +537,14 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
     setIsSaving(true);
 
     try {
-      const updated = await onSaveModel(formData);
-      const normalized = ensureConfigs((updated as LayoutModel) || formData);
+      const modelToSave: LayoutModel = {
+        ...formData,
+        studentNamePosition: formData.studentNamePosition
+          ? { ...formData.studentNamePosition, fontSizePx: 30 }
+          : { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' },
+      };
+      const updated = await onSaveModel(modelToSave);
+      const normalized = ensureConfigs((updated as LayoutModel) || modelToSave);
       setFormData(normalized);
       setSavedSnapshot(JSON.stringify(normalized));
       setSuccessMsg('Modelo salvo com sucesso.');
@@ -876,7 +883,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
               {/* Layer 20 (z-20): Background A4 PNG */}
               {getModelBackgroundUrl(formData, previewPersonType) && (
                 <img
-                  src={getModelBackgroundUrl(formData, previewPersonType)}
+                  src={getProtectedPhotoUrl(getModelBackgroundUrl(formData, previewPersonType))}
                   alt="Background A4"
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none', zIndex: 20 }}
                   className="absolute inset-0 w-full h-full object-cover pointer-events-none z-20"
@@ -922,7 +929,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
 
                     {formData.secondaryFrameUrl && (
                       <img
-                        src={formData.secondaryFrameUrl}
+                        src={getProtectedPhotoUrl(formData.secondaryFrameUrl)}
                         alt="Moldura Secundária"
                         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none', zIndex: 40 }}
                         className="absolute inset-0 w-full h-full object-fill pointer-events-none z-40"
@@ -990,7 +997,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                 >
                   {schoolConfig.schoolLogo ? (
                     <img
-                      src={schoolConfig.schoolLogo}
+                      src={getProtectedPhotoUrl(schoolConfig.schoolLogo)}
                       alt="Logo Principal"
                       className="w-full h-full object-contain pointer-events-none"
                     />
@@ -1078,7 +1085,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     fontWeight: formData.studentNamePosition?.fontWeight || 'bold',
                     fontFamily: formData.studentNamePosition?.fontFamily || formData.fontFamily || "'Montserrat', sans-serif",
                   }}
-                  className="w-full uppercase tracking-tight font-bold leading-tight"
+                  className="w-full uppercase tracking-wider font-bold leading-tight"
                 >
                   [NOME]
                 </div>
@@ -1119,7 +1126,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
               >
                 {formData.mainYearType === 'image' && formData.mainYearImageUrl ? (
                   <img
-                    src={formData.mainYearImageUrl}
+                    src={getProtectedPhotoUrl(formData.mainYearImageUrl)}
                     alt="PNG do Ano"
                     className={`max-w-full max-h-full object-contain pointer-events-none ${
                       formData.yearPosition?.align === 'left'
@@ -1185,7 +1192,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     <div className="space-y-2">
                       <div className="relative w-full h-20 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
-                          src={formData.bgImageUrl}
+                          src={getProtectedPhotoUrl(formData.bgImageUrl)}
                           alt="Prévia do Background de Alunos"
                           className="max-w-full max-h-full object-contain"
                         />
@@ -1244,7 +1251,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     <div className="space-y-2">
                       <div className="relative w-full h-20 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
-                          src={formData.collaboratorBgImageUrl}
+                          src={getProtectedPhotoUrl(formData.collaboratorBgImageUrl)}
                           alt="Prévia do Background de Colaboradores"
                           className="max-w-full max-h-full object-contain"
                         />
@@ -1530,6 +1537,24 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   </h4>
                 </div>
 
+                <FormField label="Fonte">
+                  <select
+                    value={formData.studentNamePosition?.fontFamily || formData.fontFamily || 'Montserrat, sans-serif'}
+                    onChange={(e) => {
+                      const current = formData.studentNamePosition || { xPercent: 0, yPercent: 86, widthPercent: 100, heightPercent: 5, fontSizePx: 30, color: '#ffffff', align: 'center', fontWeight: 'bold' };
+                      setFormData({ ...formData, studentNamePosition: { ...current, fontFamily: e.target.value, fontSizePx: 30 } });
+                    }}
+                    className={compactSelectClasses}
+                  >
+                    <option value="Montserrat, sans-serif">Montserrat</option>
+                    <option value="Plus Jakarta Sans, sans-serif">Plus Jakarta Sans</option>
+                    <option value="Inter, sans-serif">Inter</option>
+                    <option value="Roboto, sans-serif">Roboto</option>
+                    <option value="Playfair Display, serif">Playfair Display</option>
+                    <option value="Cinzel, serif">Cinzel</option>
+                  </select>
+                </FormField>
+
                 <div className="grid grid-cols-2 gap-2">
                   <FormField label="Horizontal (%)">
                     <input
@@ -1570,7 +1595,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                   <FormField label="Tamanho (px)">
                     <input
                       type="number"
-                      value={formData.studentNamePosition?.fontSizePx ?? 30}
+                      value={30}
                       disabled
                       readOnly
                       title="O tamanho da fonte do nome na Linha do Tempo é padronizado em 30px."
@@ -1680,7 +1705,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                       <div className="space-y-2">
                         <div className="h-12 bg-white rounded border border-slate-200 flex items-center justify-center p-1">
                           <img
-                            src={formData.mainYearImageUrl}
+                            src={getProtectedPhotoUrl(formData.mainYearImageUrl)}
                             alt="PNG do Ano"
                             className="max-h-full max-w-full object-contain"
                           />
@@ -1851,7 +1876,7 @@ export const LayoutEditor: React.FC<LayoutEditorProps> = ({
                     <div className="space-y-2">
                       <div className="relative w-full h-16 bg-slate-100 border border-slate-200 rounded-md overflow-hidden flex items-center justify-center p-1">
                         <img
-                          src={formData.secondaryFrameUrl}
+                          src={getProtectedPhotoUrl(formData.secondaryFrameUrl)}
                           alt="Prévia da Moldura Secundária"
                           className="max-w-full max-h-full object-contain"
                         />

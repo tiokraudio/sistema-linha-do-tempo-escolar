@@ -28,6 +28,7 @@ import {
   getPedagogicalPosition,
 } from '../utils/pedagogicalStructure';
 import { getActiveAcademicPeriod, getActiveAcademicYear } from '../utils/academicYears';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 export interface PhotoManagementCenterProps {
   students: Student[];
@@ -473,7 +474,7 @@ export const PhotoManagementCenter: React.FC<PhotoManagementCenterProps> = ({
                         <div className="w-10 h-12 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
                           {hasPhoto ? (
                             <img
-                              src={item.record.photoUrl}
+                              src={getProtectedPhotoUrl(item.record.photoUrl)}
                               alt={item.student.name}
                               className="w-full h-full object-cover"
                             />

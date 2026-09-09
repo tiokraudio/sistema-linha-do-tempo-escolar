@@ -424,15 +424,24 @@ export function updateAdminPassword(currentPassword: string, newPasswordInput: s
 
 /**
  * Reusable Express authentication middleware.
+ * Supports token extraction from Authorization header (Bearer <token>)
+ * or query parameter (?token=<token>) for media streaming and authorized file downloads.
  */
 export function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  let token: string | null = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.query && typeof req.query.token === 'string') {
+    token = req.query.token.trim();
+  }
+
+  if (!token) {
     return res.status(401).json({ error: 'Não autorizado. Sessão inválida ou não informada.' });
   }
 
-  const token = authHeader.substring(7).trim();
-  if (!token || !validateSession(token)) {
+  if (!validateSession(token)) {
     return res.status(401).json({ error: 'Não autorizado. Sessão expirada ou inválida.' });
   }
 

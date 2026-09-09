@@ -16,6 +16,7 @@ import { PhotoCropperModal } from './PhotoCropperModal';
 import { DownloadTimelineModal } from './DownloadTimelineModal';
 import { ReviewSheetPrintModal } from './ReviewSheetPrintModal';
 import { TimelinePreviewModal } from './TimelinePreviewModal';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { CarometroModal } from './CarometroModal';
 import {
   downloadA4Pdf,
@@ -903,7 +904,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
                         <div className="w-9 h-9 rounded-xl bg-slate-200 border border-slate-300 overflow-hidden shrink-0 flex items-center justify-center">
                           {item.photoUrl ? (
                             <img
-                              src={item.photoUrl}
+                              src={getProtectedPhotoUrl(item.photoUrl)}
                               alt="Foto"
                               className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"

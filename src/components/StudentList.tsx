@@ -23,6 +23,7 @@ import {
   User,
 } from 'lucide-react';
 import { BatchImportStudentsModal } from './BatchImportStudentsModal';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 import { BatchImportCollaboratorsModal } from './BatchImportCollaboratorsModal';
 import { ConfirmStudentEnrollmentModal } from './ConfirmStudentEnrollmentModal';
 import { Button } from './ui/Button';
@@ -370,7 +371,7 @@ export const StudentList: React.FC<StudentListProps> = ({
                       <td className="px-4 py-3 text-center">
                         {activeRecord?.photoUrl ? (
                           <img
-                            src={activeRecord.photoUrl}
+                            src={getProtectedPhotoUrl(activeRecord.photoUrl)}
                             alt={student.name}
                             className="w-8 h-8 rounded-full object-cover border border-slate-200 mx-auto shadow-2xs"
                           />

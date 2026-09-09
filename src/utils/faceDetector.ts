@@ -1,4 +1,5 @@
 import { CropSettings } from '../types';
+import { getProtectedPhotoUrl } from './photoUrl';
 
 /**
  * Client-side face detection heuristic executed 100% locally on HTML Canvas.
@@ -93,6 +94,6 @@ export async function autoDetectFaceCrop(imageUrl: string): Promise<CropSettings
       resolve({ x: 50, y: 50, zoom: 1.0 });
     };
 
-    img.src = imageUrl;
+    img.src = getProtectedPhotoUrl(imageUrl);
   });
 }

@@ -135,29 +135,90 @@ export function savePhotoFromBase64(
 }
 
 /**
+ * Safely resolves and validates an image filename strictly inside data/uploads/photos/.
+ * Prevents any directory traversal (../, ..\, null bytes, encoded slashes, absolute paths).
+ * Returns the absolute path string if safe and inside PHOTOS_DIR, or null otherwise.
+ */
+export function getSafePhotoFilePath(filenameInput: unknown): string | null {
+  if (!filenameInput || typeof filenameInput !== 'string') return null;
+
+  let decoded = '';
+  try {
+    decoded = decodeURIComponent(filenameInput.trim());
+  } catch {
+    return null;
+  }
+
+  // Remove any leading slash or path prefix if provided (e.g. /uploads/photos/file.jpg or /api/photos/file.jpg)
+  if (decoded.startsWith('/uploads/photos/')) {
+    decoded = decoded.slice('/uploads/photos/'.length);
+  } else if (decoded.startsWith('uploads/photos/')) {
+    decoded = decoded.slice('uploads/photos/'.length);
+  } else if (decoded.startsWith('/api/photos/')) {
+    decoded = decoded.slice('/api/photos/'.length);
+  } else if (decoded.startsWith('api/photos/')) {
+    decoded = decoded.slice('api/photos/'.length);
+  }
+
+  // Strip potential query strings or hashes
+  decoded = decoded.split('?')[0].split('#')[0];
+
+  // Strict check: no directory traversal, no path separators, no null bytes
+  if (
+    decoded.includes('..') ||
+    decoded.includes('/') ||
+    decoded.includes('\\') ||
+    decoded.includes('\0')
+  ) {
+    return null;
+  }
+
+  const baseName = path.basename(decoded);
+  if (!baseName || baseName === '.' || baseName === '..') {
+    return null;
+  }
+
+  // Filename format: alphanumeric, underscore, hyphen, and valid dot extension
+  // Must not start with a dot (hidden files like .env, .git)
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(baseName) || baseName.startsWith('.')) {
+    return null;
+  }
+
+  const resolvedPhotosDir = path.resolve(PHOTOS_DIR);
+  const resolvedTarget = path.resolve(PHOTOS_DIR, baseName);
+
+  // Path containment check: target MUST start strictly with PHOTOS_DIR + separator
+  if (!resolvedTarget.startsWith(resolvedPhotosDir + path.sep)) {
+    return null;
+  }
+
+  return resolvedTarget;
+}
+
+/**
  * Deletes a photo file from disk if it exists inside data/uploads/photos/.
  */
 export function deletePhotoFile(photoUrl: string | undefined | null): boolean {
   if (!photoUrl || typeof photoUrl !== 'string') return false;
   const trimmed = photoUrl.trim();
-  if (!trimmed.startsWith('/uploads/photos/') && !trimmed.startsWith('uploads/photos/')) {
+  if (
+    !trimmed.startsWith('/uploads/photos/') &&
+    !trimmed.startsWith('uploads/photos/') &&
+    !trimmed.startsWith('/api/photos/') &&
+    !trimmed.startsWith('api/photos/')
+  ) {
     return false;
   }
 
-  const filename = path.basename(trimmed);
+  const filename = path.basename(trimmed.split('?')[0].split('#')[0]);
   if (!filename || filename === '.' || filename === '..') return false;
 
-  const targetPath = path.join(PHOTOS_DIR, filename);
-  // Ensure path is strictly inside PHOTOS_DIR
-  const resolvedTarget = path.resolve(targetPath);
-  const resolvedPhotosDir = path.resolve(PHOTOS_DIR);
-  if (!resolvedTarget.startsWith(resolvedPhotosDir + path.sep)) {
-    return false;
-  }
+  const targetPath = getSafePhotoFilePath(filename);
+  if (!targetPath) return false;
 
-  if (fs.existsSync(resolvedTarget)) {
+  if (fs.existsSync(targetPath)) {
     try {
-      fs.unlinkSync(resolvedTarget);
+      fs.unlinkSync(targetPath);
       return true;
     } catch (err) {
       console.error('[PhotoStorage] Erro ao excluir arquivo de foto:', err);
@@ -194,8 +255,13 @@ export function cleanupOrphanPhotos(store: LocalStorageData): number {
   const registerUrl = (url?: string | null) => {
     if (!url || typeof url !== 'string') return;
     const trimmed = url.trim();
-    if (trimmed.startsWith('/uploads/photos/') || trimmed.startsWith('uploads/photos/')) {
-      const filename = path.basename(trimmed);
+    if (
+      trimmed.startsWith('/uploads/photos/') ||
+      trimmed.startsWith('uploads/photos/') ||
+      trimmed.startsWith('/api/photos/') ||
+      trimmed.startsWith('api/photos/')
+    ) {
+      const filename = path.basename(trimmed.split('?')[0].split('#')[0]);
       if (filename && filename !== '.' && filename !== '..') {
         activeFilenames.add(filename);
       }

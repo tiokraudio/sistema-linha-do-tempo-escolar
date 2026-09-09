@@ -1,5 +1,6 @@
 import React from 'react';
 import { SchoolConfig } from '../types';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 export interface A4PrintHeaderProps {
   schoolConfig?: SchoolConfig;
@@ -29,7 +30,7 @@ export const A4PrintHeader: React.FC<A4PrintHeaderProps> = ({
           <div className="flex items-center gap-8">
             {schoolConfig?.schoolLogo ? (
               <img
-                src={schoolConfig.schoolLogo}
+                src={getProtectedPhotoUrl(schoolConfig.schoolLogo)}
                 alt="Logo da Escola"
                 className="h-[144px] w-auto max-w-[280px] object-contain shrink-0"
                 referrerPolicy="no-referrer"
@@ -72,7 +73,7 @@ export const A4PrintHeader: React.FC<A4PrintHeaderProps> = ({
         <div className="flex items-center gap-3">
           {schoolConfig?.schoolLogo ? (
             <img
-              src={schoolConfig.schoolLogo}
+              src={getProtectedPhotoUrl(schoolConfig.schoolLogo)}
               alt="Logo da Escola"
               className="h-12 w-auto max-w-[90px] object-contain shrink-0"
               referrerPolicy="no-referrer"

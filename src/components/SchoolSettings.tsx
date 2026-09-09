@@ -5,6 +5,7 @@ import { Button } from './ui/Button';
 import { Alert } from './ui/Alert';
 import { Toast } from './ui/Toast';
 import { FormField, inputClasses } from './ui/FormField';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 interface SchoolSettingsProps {
   config: SchoolConfig;
@@ -137,7 +138,7 @@ export const SchoolSettings: React.FC<SchoolSettingsProps> = ({
             <div className="w-16 h-16 rounded-lg border border-slate-200 bg-slate-900 p-1.5 flex items-center justify-center shrink-0 overflow-hidden">
               {schoolLogo ? (
                 <img
-                  src={schoolLogo}
+                  src={getProtectedPhotoUrl(schoolLogo)}
                   alt="Logo"
                   className="max-w-full max-h-full object-contain"
                 />

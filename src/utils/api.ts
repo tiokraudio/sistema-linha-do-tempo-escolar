@@ -48,6 +48,8 @@ export function clearAuthSession() {
   }
 }
 
+export { getProtectedPhotoUrl } from './photoUrl';
+
 /**
  * Standard API request wrapper that automatically attaches the Authorization header
  * and handles 401 unauthorized session expiration cleanly.
@@ -56,7 +58,12 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   let finalInit: RequestInit = init ? { ...init } : {};
 
-  if (url.startsWith('/api/') || url.includes('/api/')) {
+  if (
+    url.startsWith('/api/') ||
+    url.includes('/api/') ||
+    url.startsWith('/uploads/') ||
+    url.includes('/uploads/')
+  ) {
     const token = getAuthToken();
     const isPublicEndpoint =
       url.includes('/api/auth/login') ||

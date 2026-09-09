@@ -3,6 +3,7 @@ import { SchoolConfig } from '../types';
 import { School, Search, LogOut, User, ShieldCheck, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getLocalUserProfile } from '../utils/userProfile';
+import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 interface HeaderProps {
   config: SchoolConfig;
@@ -57,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-3">
         {config.schoolLogo ? (
           <img
-            src={config.schoolLogo}
+            src={getProtectedPhotoUrl(config.schoolLogo)}
             alt="Logo da Escola"
             className="w-8 h-8 object-contain bg-slate-800 p-0.5 rounded-lg border border-slate-700"
           />
@@ -117,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {profile.avatarUrl ? (
               <img
-                src={profile.avatarUrl}
+                src={getProtectedPhotoUrl(profile.avatarUrl)}
                 alt={displayName}
                 className="w-5 h-5 rounded-full object-cover border border-blue-400/40 shrink-0"
               />
@@ -137,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="h-9 flex items-center gap-2 px-2.5 sm:px-3 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-300">
             {profile.avatarUrl ? (
               <img
-                src={profile.avatarUrl}
+                src={getProtectedPhotoUrl(profile.avatarUrl)}
                 alt={displayName}
                 className="w-5 h-5 rounded-full object-cover border border-blue-400/40 shrink-0"
               />
