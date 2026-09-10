@@ -118,9 +118,10 @@ async function triggerWorkbookDownload(wb: ExcelJS.Workbook, filename: string): 
 }
 
 /**
- * Gera e realiza o download do arquivo modelo XLSX formatado com texto e instruções.
+ * Constrói a estrutura do Workbook modelo XLSX para importação de alunos.
+ * Isolado para permitir testes automatizados, inspeção e reuso.
  */
-export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
+export function buildImportTemplateWorkbook(activeClasses: ClassRecord[] = []): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sistema Linha do Tempo Escolar';
   wb.created = new Date();
@@ -218,6 +219,14 @@ export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
     wsInstructions.addRow([1, 'Nenhuma turma cadastrada ou ativa', '-', '-']);
   }
 
+  return wb;
+}
+
+/**
+ * Gera e realiza o download do arquivo modelo XLSX formatado com texto e instruções.
+ */
+export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
+  const wb = buildImportTemplateWorkbook(activeClasses);
   // Disparar download no navegador
   triggerWorkbookDownload(wb, 'modelo_importacao_alunos.xlsx').catch(console.error);
 }

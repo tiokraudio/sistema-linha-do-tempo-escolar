@@ -1,10 +1,17 @@
 /**
- * Suíte de Testes de Regressão da Migração ExcelJS (Etapa 5)
+ * Suíte Oficial de Testes de Regressão da Migração ExcelJS (Etapa 5)
  * Valida a integridade, compatibilidade, segurança e equivalência funcional.
  */
 import ExcelJS from 'exceljs';
-import { extractCellValueAsString, parseXLSXFile } from '../src/utils/xlsxImportHelper';
-import { parseCollaboratorXLSXFile } from '../src/utils/xlsxCollaboratorImportHelper';
+import {
+  extractCellValueAsString,
+  parseXLSXFile,
+  buildImportTemplateWorkbook,
+} from '../src/utils/xlsxImportHelper';
+import {
+  parseCollaboratorXLSXFile,
+  buildCollaboratorImportTemplateWorkbook,
+} from '../src/utils/xlsxCollaboratorImportHelper';
 
 // Helper simulado de File para ambiente Node
 class FakeFile {
@@ -23,26 +30,28 @@ class FakeFile {
   }
 }
 
-let passed = 0;
-let failed = 0;
+let passedAssertions = 0;
+let failedAssertions = 0;
 
 function assert(condition: boolean, testName: string, detail?: any) {
   if (condition) {
-    console.log(`  ✓ PASS: ${testName}`);
-    passed++;
+    console.log(`    ✓ PASS: ${testName}`);
+    passedAssertions++;
   } else {
-    console.error(`  ✗ FAIL: ${testName}`, detail !== undefined ? detail : '');
-    failed++;
+    console.error(`    ✗ FAIL: ${testName}`, detail !== undefined ? detail : '');
+    failedAssertions++;
   }
 }
 
-async function runRegressionTests() {
-  console.log('====================================================');
-  console.log('INICIANDO SUÍTE DE TESTES DE REGRESSÃO - ETAPA 5');
-  console.log('====================================================\n');
+async function runAllTests() {
+  console.log('======================================================================');
+  console.log('SUÍTE OFICIAL DE TESTES DE REGRESSÃO - MIGRAÇÃO EXCELJS (ETAPA 5)');
+  console.log('======================================================================\n');
 
-  // TESTE 1: Preservação de zeros à esquerda em matrículas de texto
-  console.log('[1] Teste de Célula: Preservação de zeros à esquerda (string)');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 1: Preservação de zeros à esquerda em valores de texto (string pura)
+  // --------------------------------------------------------------------------------
+  console.log('[Cenário 1] Preservação de zeros à esquerda em células de texto');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Teste');
@@ -50,11 +59,13 @@ async function runRegressionTests() {
     cell.value = '000123';
     cell.numFmt = '@';
     const result = extractCellValueAsString(cell);
-    assert(result === '000123', 'extractCellValueAsString preserva "000123" exatamente', result);
+    assert(result === '000123', 'Preserva "000123" exatamente sem converter para número', result);
   }
 
-  // TESTE 2: Formatação com máscara de zeros à esquerda (ex: 000000 com valor numérico 123)
-  console.log('[2] Teste de Célula: Preservação de zeros através de máscara numérica (numFmt: 000000)');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 2: Preservação de zeros via máscara de formatação numérica (numFmt: 000000)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 2] Preservação de zeros através de máscara numérica (numFmt: 000000)');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Teste');
@@ -62,22 +73,30 @@ async function runRegressionTests() {
     cell.value = 123;
     cell.numFmt = '000000';
     const result = extractCellValueAsString(cell);
-    assert(result === '000123', 'extractCellValueAsString aplica zeros à esquerda de máscara', result);
+    assert(result === '000123', 'Aplica zeros à esquerda conforme máscara ("000123")', result);
   }
 
-  // TESTE 3: Preservação de acentos UTF-8
-  console.log('[3] Teste de Célula: Preservação de acentos e caracteres especiais UTF-8');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 3: Preservação de caracteres especiais e acentuação UTF-8
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 3] Preservação de caracteres especiais e acentuação UTF-8');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Teste');
     const cell = ws.getCell('A1');
-    cell.value = 'JOÃO GONÇALVES DA CONCEIÇÃO';
+    cell.value = 'JOÃO GONÇALVES DA CONCEIÇÃO & CÉSAR ÉRICO';
     const result = extractCellValueAsString(cell);
-    assert(result === 'JOÃO GONÇALVES DA CONCEIÇÃO', 'Preserva acentos UTF-8 intactos', result);
+    assert(
+      result === 'JOÃO GONÇALVES DA CONCEIÇÃO & CÉSAR ÉRICO',
+      'Preserva todos os acentos (ã, ç, é) e caracteres especiais UTF-8',
+      result
+    );
   }
 
-  // TESTE 4: Rich Text
-  console.log('[4] Teste de Célula: Extração de Rich Text');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 4: Extração segura de células Rich Text
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 4] Extração segura de conteúdo com Rich Text');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Teste');
@@ -85,15 +104,17 @@ async function runRegressionTests() {
     cell.value = {
       richText: [
         { text: '000' },
-        { text: '789', font: { bold: true } },
+        { text: '789', font: { bold: true, color: { argb: 'FF0000' } } },
       ],
     } as any;
     const result = extractCellValueAsString(cell);
-    assert(result === '000789', 'Extrai conteúdo de RichText sem perdas', result);
+    assert(result === '000789', 'Concatena fragmentos de Rich Text sem perda de zeros ou caracteres', result);
   }
 
-  // TESTE 5: Fórmulas (usa resultado em cache sem executar código dinâmico)
-  console.log('[5] Teste de Célula: Resolução segura de fórmulas');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 5: Resolução segura de fórmulas (leitura estrita de result em cache)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 5] Resolução segura de fórmulas (leitura de result sem execução de código)');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Teste');
@@ -103,66 +124,117 @@ async function runRegressionTests() {
       result: '000555',
     } as any;
     const result = extractCellValueAsString(cell);
-    assert(result === '000555', 'Lê resultado de fórmula com segurança', result);
+    assert(result === '000555', 'Lê resultado pré-calculado em cache de fórmula com segurança', result);
   }
 
-  // TESTE 6: Geração e Leitura de Planilha Completa de Alunos
-  console.log('[6] Teste de Integração: Fluxo completo de importação de Alunos');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 6: Geração real do modelo XLSX de Alunos (buildImportTemplateWorkbook)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 6] Geração real do modelo XLSX de Alunos (estrutura, abas, larguras e formatos)');
   {
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Alunos');
-    ws.columns = [
-      { header: 'Matrícula', key: 'enrollment' },
-      { header: 'Nome completo', key: 'name' },
-      { header: 'Turma', key: 'className' },
+    const activeClassesMock = [
+      { id: '1', name: '1º Ano A', stage: 'EFAI' as const, stageName: 'Fundamental I', order: 1, active: true, createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: '2', name: '2º Ano B', stage: 'EFAI' as const, stageName: 'Fundamental I', order: 2, active: true, createdAt: '2026-01-01T00:00:00.000Z' },
     ];
 
-    ws.addRow(['000123', 'JOÃO DA SILVA', '1º Ano']);
-    ws.addRow(['000124', 'MARIA CONCEIÇÃO', '1º Ano']);
-    ws.addRow(['000125', 'PEDRO SANTOS', '2º Ano']);
+    const wb = buildImportTemplateWorkbook(activeClassesMock);
 
-    // Célula vazia no final (deve ser ignorada)
-    ws.addRow(['', '', '']);
+    // 1. Verificar presença das abas
+    const wsData = wb.getWorksheet('Alunos');
+    const wsInstructions = wb.getWorksheet('INSTRUÇÕES');
+    assert(wsData !== undefined, 'Aba "Alunos" foi criada no workbook');
+    assert(wsInstructions !== undefined, 'Aba "INSTRUÇÕES" foi criada no workbook');
 
+    // 2. Verificar cabeçalhos da aba Alunos
+    const col1 = wsData?.getRow(1).getCell(1).value;
+    const col2 = wsData?.getRow(1).getCell(2).value;
+    const col3 = wsData?.getRow(1).getCell(3).value;
+    assert(col1 === 'Matrícula', 'Coluna 1 é "Matrícula"', col1);
+    assert(col2 === 'Nome completo', 'Coluna 2 é "Nome completo"', col2);
+    assert(col3 === 'Turma', 'Coluna 3 é "Turma"', col3);
+
+    // 3. Verificar formatação de texto e zeros na coluna de matrícula
+    const row2Enrollment = wsData?.getRow(2).getCell(1);
+    assert(row2Enrollment?.numFmt === '@', 'Célula de matrícula possui numFmt: "@" (Texto)');
+    assert(row2Enrollment?.value === '000123', 'Exemplo de matrícula "000123" preserva zeros à esquerda');
+
+    // 4. Verificar larguras essenciais das colunas
+    const widthCol1 = wsData?.getColumn(1).width;
+    const widthCol2 = wsData?.getColumn(2).width;
+    const widthCol3 = wsData?.getColumn(3).width;
+    assert(widthCol1 === 18, 'Largura da coluna Matrícula configurada (18)', widthCol1);
+    assert(widthCol2 === 38, 'Largura da coluna Nome configurada (38)', widthCol2);
+    assert(widthCol3 === 28, 'Largura da coluna Turma configurada (28)', widthCol3);
+
+    // 5. Verificar conteúdo da aba INSTRUÇÕES (lista de turmas)
+    let foundClass1 = false;
+    let foundClass2 = false;
+    wsInstructions?.eachRow((row) => {
+      const cellText = String(row.getCell(2).value || '');
+      if (cellText.includes('1º Ano A')) foundClass1 = true;
+      if (cellText.includes('2º Ano B')) foundClass2 = true;
+    });
+    assert(foundClass1, 'Aba INSTRUÇÕES inclui turma mockada "1º Ano A"');
+    assert(foundClass2, 'Aba INSTRUÇÕES inclui turma mockada "2º Ano B"');
+
+    // 6. Round-trip completo: Gerar buffer do modelo e submeter ao parseXLSXFile
     const buffer = await wb.xlsx.writeBuffer();
-    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'alunos_validos.xlsx');
-
-    const rows = await parseXLSXFile(fakeFile as unknown as File);
-    assert(rows.length === 3, 'Retornou exatamente 3 alunos (ignorou linha vazia)', rows.length);
-    assert(rows[0].enrollment === '000123', 'Matrícula 1 preservou zeros: "000123"', rows[0]?.enrollment);
-    assert(rows[0].name === 'JOÃO DA SILVA', 'Nome 1 preservado', rows[0]?.name);
-    assert(rows[1].enrollment === '000124', 'Matrícula 2 preservou zeros: "000124"', rows[1]?.enrollment);
-    assert(rows[1].name === 'MARIA CONCEIÇÃO', 'Nome com acentuação preservado', rows[1]?.name);
-    assert(rows[2].className === '2º Ano', 'Turma preservada', rows[2]?.className);
+    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'modelo_gerado_alunos.xlsx');
+    const parsedRows = await parseXLSXFile(fakeFile as unknown as File);
+    assert(parsedRows.length === 4, 'parseXLSXFile leu com sucesso os 4 exemplos gerados no modelo', parsedRows.length);
+    assert(parsedRows[0].enrollment === '000123', 'Primeiro aluno do modelo parseado preservou "000123"', parsedRows[0]?.enrollment);
   }
 
-  // TESTE 7: Geração e Leitura de Planilha Completa de Colaboradores
-  console.log('[7] Teste de Integração: Fluxo completo de importação de Colaboradores');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 7: Geração real do modelo XLSX de Colaboradores (buildCollaboratorImportTemplateWorkbook)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 7] Geração real do modelo XLSX de Colaboradores (estrutura, abas, larguras e formatos)');
+  {
+    const wb = buildCollaboratorImportTemplateWorkbook();
+
+    // 1. Verificar presença das abas
+    const wsData = wb.getWorksheet('Colaboradores');
+    const wsInstructions = wb.getWorksheet('INSTRUÇÕES');
+    assert(wsData !== undefined, 'Aba "Colaboradores" foi criada no workbook');
+    assert(wsInstructions !== undefined, 'Aba "INSTRUÇÕES" foi criada no workbook');
+
+    // 2. Verificar cabeçalhos da aba Colaboradores
+    const col1 = wsData?.getRow(1).getCell(1).value;
+    const col2 = wsData?.getRow(1).getCell(2).value;
+    assert(col1 === 'Matrícula / Código', 'Coluna 1 é "Matrícula / Código"', col1);
+    assert(col2 === 'Nome completo', 'Coluna 2 é "Nome completo"', col2);
+
+    // 3. Verificar formatação de texto e zeros na coluna de matrícula
+    const row2Enrollment = wsData?.getRow(2).getCell(1);
+    assert(row2Enrollment?.numFmt === '@', 'Célula de matrícula de colaborador possui numFmt: "@" (Texto)');
+    assert(row2Enrollment?.value === '000101', 'Exemplo de matrícula de colaborador "000101" preserva zeros');
+
+    // 4. Verificar larguras das colunas
+    const widthCol1 = wsData?.getColumn(1).width;
+    const widthCol2 = wsData?.getColumn(2).width;
+    assert(widthCol1 === 22, 'Largura da coluna Matrícula / Código configurada (22)', widthCol1);
+    assert(widthCol2 === 42, 'Largura da coluna Nome completo configurada (42)', widthCol2);
+
+    // 5. Round-trip completo: Gerar buffer do modelo e submeter ao parseCollaboratorXLSXFile
+    const buffer = await wb.xlsx.writeBuffer();
+    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'modelo_gerado_colaboradores.xlsx');
+    const parsedRows = await parseCollaboratorXLSXFile(fakeFile as unknown as File);
+    assert(parsedRows.length === 5, 'parseCollaboratorXLSXFile leu com sucesso os 5 colaboradores do modelo', parsedRows.length);
+    assert(parsedRows[0].enrollment === '000101', 'Primeiro colaborador parseado preservou "000101"', parsedRows[0]?.enrollment);
+  }
+
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 8: Limite de segurança contra excesso de abas (> 20 abas)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 8] Limite de segurança contra excesso de abas (> 20 abas)');
   {
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Colaboradores');
-    ws.columns = [
-      { header: 'Matrícula / Código', key: 'enrollment' },
-      { header: 'Nome completo', key: 'name' },
-    ];
-
-    ws.addRow(['000101', 'ANA MARIA SILVA']);
-    ws.addRow(['000102', 'CARLOS ÉRICO SANTOS']);
-    ws.addRow(['000103', 'FERNANDA OLIVEIRA']);
-
+    for (let i = 1; i <= 21; i++) {
+      wb.addWorksheet(`Aba_${i}`);
+    }
     const buffer = await wb.xlsx.writeBuffer();
-    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'colaboradores_validos.xlsx');
+    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'muitas_abas.xlsx');
 
-    const rows = await parseCollaboratorXLSXFile(fakeFile as unknown as File);
-    assert(rows.length === 3, 'Retornou 3 colaboradores', rows.length);
-    assert(rows[0].enrollment === '000101', 'Código de colaborador preservou zeros: "000101"', rows[0]?.enrollment);
-    assert(rows[1].name === 'CARLOS ÉRICO SANTOS', 'Nome de colaborador com acento preservado', rows[1]?.name);
-  }
-
-  // TESTE 8: Rejeição amigável e segura de arquivos .xls legados
-  console.log('[8] Teste de Segurança: Bloqueio seguro de arquivos legados .xls com orientação');
-  {
-    const fakeFile = new FakeFile(new ArrayBuffer(100), 'dados_legados.xls');
     let threw = false;
     let errorMessage = '';
     try {
@@ -171,18 +243,82 @@ async function runRegressionTests() {
       threw = true;
       errorMessage = err.message;
     }
-    assert(threw, 'Rejeitou arquivo .xls com exceção explicativa', errorMessage);
+    assert(threw, 'Rejeitou planilha com 21 abas com exceção controlada', errorMessage);
     assert(
-      errorMessage.includes('.xls') && errorMessage.includes('.xlsx'),
-      'Mensagem orienta claramente o usuário a salvar como .xlsx',
+      errorMessage.includes('máx 20') || errorMessage.includes('20 abas'),
+      'Mensagem informa explicitamente o limite de 20 abas',
       errorMessage
     );
   }
 
-  // TESTE 9: Rejeição de arquivo corrompido / não-Excel
-  console.log('[9] Teste de Robustez: Arquivo corrompido ou formato inválido');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 9: Limite de segurança contra excesso de linhas (> 10.000 linhas)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 9] Limite de segurança contra excesso de linhas (> 10.000 linhas)');
   {
-    const invalidBuffer = Buffer.from('ESTE NAO E UM ARQUIVO EXCEL VALIDO NEM ZIP');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Alunos');
+    ws.columns = [
+      { header: 'Matrícula', key: 'm' },
+      { header: 'Nome', key: 'n' },
+      { header: 'Turma', key: 't' },
+    ];
+
+    // Simula uma planilha com 10.002 linhas (cabeçalho + 10.001 linhas)
+    const mockRow = ['001', 'Aluno Teste', 'Turma A'];
+    const bulkRows: string[][] = [];
+    for (let i = 0; i <= 10001; i++) {
+      bulkRows.push(mockRow);
+    }
+    ws.addRows(bulkRows);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'muitas_linhas.xlsx');
+
+    let threw = false;
+    let errorMessage = '';
+    try {
+      await parseXLSXFile(fakeFile as unknown as File);
+    } catch (err: any) {
+      threw = true;
+      errorMessage = err.message;
+    }
+    assert(threw, 'Rejeitou planilha com mais de 10.000 linhas com exceção controlada', errorMessage);
+    assert(
+      errorMessage.includes('10.000 linhas'),
+      'Mensagem informa explicitamente o limite de 10.000 linhas',
+      errorMessage
+    );
+  }
+
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 10: Rejeição amigável e segura de arquivos no formato legado .xls
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 10] Bloqueio amigável de arquivos .xls legados com instrução ao usuário');
+  {
+    const fakeFile = new FakeFile(new ArrayBuffer(100), 'planilha_antiga.xls');
+    let threw = false;
+    let errorMessage = '';
+    try {
+      await parseXLSXFile(fakeFile as unknown as File);
+    } catch (err: any) {
+      threw = true;
+      errorMessage = err.message;
+    }
+    assert(threw, 'Rejeitou arquivo com extensão .xls', errorMessage);
+    assert(
+      errorMessage.includes('.xls') && errorMessage.includes('.xlsx'),
+      'Mensagem orienta o usuário a salvar a planilha como .xlsx',
+      errorMessage
+    );
+  }
+
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 11: Rejeição de arquivo corrompido ou formato inválido
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 11] Rejeição segura de arquivo corrompido ou formato inválido');
+  {
+    const invalidBuffer = Buffer.from('CONTEUDO_TOTALMENTE_INVALIDO_NAO_EXCEL');
     const fakeFile = new FakeFile(invalidBuffer.buffer as ArrayBuffer, 'corrompido.xlsx');
     let threw = false;
     let errorMessage = '';
@@ -192,14 +328,20 @@ async function runRegressionTests() {
       threw = true;
       errorMessage = err.message;
     }
-    assert(threw, 'Rejeitou arquivo inválido com segurança sem travar a aplicação', errorMessage);
-    assert(errorMessage.includes('corrompido') || errorMessage.includes('válida'), 'Mensagem amigável de erro', errorMessage);
+    assert(threw, 'Rejeitou arquivo corrompido sem quebrar a execução', errorMessage);
+    assert(
+      errorMessage.includes('corrompido') || errorMessage.includes('válida'),
+      'Mensagem esclarece que o arquivo não é válido ou está corrompido',
+      errorMessage
+    );
   }
 
-  // TESTE 10: Limite de tamanho de arquivo (> 10MB)
-  console.log('[10] Teste de Segurança: Limite de tamanho de arquivo (max 10MB)');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 12: Limite de tamanho de arquivo (> 10MB)
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 12] Limite de tamanho de arquivo (> 10MB)');
   {
-    const bigFile = new FakeFile(new ArrayBuffer(11 * 1024 * 1024), 'grande.xlsx');
+    const bigFile = new FakeFile(new ArrayBuffer(11 * 1024 * 1024), 'arquivo_gigante.xlsx');
     let threw = false;
     let errorMessage = '';
     try {
@@ -212,35 +354,64 @@ async function runRegressionTests() {
     assert(errorMessage.includes('10 MB'), 'Mensagem menciona o limite de 10 MB', errorMessage);
   }
 
-  // TESTE 11: Detecção inteligente de cabeçalhos mesmo com sinônimos (RA, Estudante, Série)
-  console.log('[11] Teste de Flexibilidade: Detecção de cabeçalhos alternativos');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 13: Detecção inteligente e tolerante de cabeçalhos alternativos
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 13] Detecção flexível de cabeçalhos alternativos (RA, Estudante, Série)');
   {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Dados');
-    // Cabeçalho alternativo
-    ws.addRow(['Código RA', 'Nome do Estudante', 'Série / Ano']);
-    ws.addRow(['004567', 'LUCAS PEREIRA', '3º Ano']);
+    ws.addRow(['Código RA', 'Nome do Estudante', 'Série / Turma']);
+    ws.addRow(['009988', 'LUCAS PEREIRA DE SOUZA', '3º Ano']);
 
     const buffer = await wb.xlsx.writeBuffer();
-    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'sinonimos.xlsx');
+    const fakeFile = new FakeFile(buffer as ArrayBuffer, 'cabecalhos_sinonimos.xlsx');
 
     const rows = await parseXLSXFile(fakeFile as unknown as File);
-    assert(rows.length === 1, 'Encontrou aluno com cabeçalhos alternativos', rows.length);
-    assert(rows[0].enrollment === '004567', 'Matrícula detectada corretamente', rows[0]?.enrollment);
-    assert(rows[0].name === 'LUCAS PEREIRA', 'Nome detectado corretamente', rows[0]?.name);
-    assert(rows[0].className === '3º Ano', 'Turma detectada corretamente', rows[0]?.className);
+    assert(rows.length === 1, 'Localizou linha de dados mesmo com cabeçalhos alternativos', rows.length);
+    assert(rows[0].enrollment === '009988', 'Identificou coluna RA como matrícula e preservou zeros ("009988")', rows[0]?.enrollment);
+    assert(rows[0].name === 'LUCAS PEREIRA DE SOUZA', 'Identificou coluna Estudante como nome', rows[0]?.name);
+    assert(rows[0].className === '3º Ano', 'Identificou coluna Série / Turma como turma', rows[0]?.className);
   }
 
-  console.log('\n====================================================');
-  console.log(`RESULTADO DOS TESTES: ${passed} passaram, ${failed} falharam.`);
-  console.log('====================================================');
+  // --------------------------------------------------------------------------------
+  // CENÁRIO 14: Validação de Compatibilidade de Runtime do ExcelJS com uuid 11.1.1
+  // --------------------------------------------------------------------------------
+  console.log('\n[Cenário 14] Teste de Runtime: ExcelJS 4.4.0 com uuid 11.1.1 instalado');
+  {
+    // Criar workbook com múltiplos recursos (múltiplas abas, metadados, formatação e compactação zip)
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Validação UUID v11';
+    wb.created = new Date();
 
-  if (failed > 0) {
+    const ws1 = wb.addWorksheet('Aba 1');
+    ws1.addRow(['ID', 'Valor']);
+    ws1.addRow(['UUID_TEST_1', 'Teste 1']);
+
+    const ws2 = wb.addWorksheet('Aba 2');
+    ws2.addRow(['Código', 'Descrição']);
+    ws2.addRow(['UUID_TEST_2', 'Teste 2']);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    assert(buffer !== null && buffer.byteLength > 0, 'writeBuffer() gerou arquivo OpenXML com sucesso usando uuid 11.1.1', buffer.byteLength);
+
+    const wbReloaded = new ExcelJS.Workbook();
+    await wbReloaded.xlsx.load(buffer);
+    assert(wbReloaded.worksheets.length === 2, 'Workbook foi recarregado e validado perfeitamente');
+    assert(wbReloaded.getWorksheet('Aba 1')?.getRow(2).getCell(1).value === 'UUID_TEST_1', 'Conteúdo da célula conferido');
+  }
+
+  console.log('\n======================================================================');
+  console.log(`RESULTADO FINAL: ${passedAssertions} asserções passaram, ${failedAssertions} falharam.`);
+  console.log(`TOTAL DE CENÁRIOS TESTADOS: 14`);
+  console.log('======================================================================\n');
+
+  if (failedAssertions > 0) {
     process.exit(1);
   }
 }
 
-runRegressionTests().catch((err) => {
-  console.error('Erro fatal nos testes:', err);
+runAllTests().catch((err) => {
+  console.error('Erro fatal na execução da suíte de testes:', err);
   process.exit(1);
 });

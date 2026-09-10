@@ -53,9 +53,10 @@ async function triggerWorkbookDownload(wb: ExcelJS.Workbook, filename: string): 
 }
 
 /**
- * Gera e realiza o download do arquivo modelo XLSX específico para importação de colaboradores.
+ * Constrói a estrutura do Workbook modelo XLSX para importação de colaboradores.
+ * Isolado para permitir testes automatizados, inspeção e reuso.
  */
-export function generateCollaboratorImportTemplateXLSX(): void {
+export function buildCollaboratorImportTemplateWorkbook(): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sistema Linha do Tempo Escolar';
   wb.created = new Date();
@@ -121,6 +122,14 @@ export function generateCollaboratorImportTemplateXLSX(): void {
     wsInstructions.addRow(line);
   });
 
+  return wb;
+}
+
+/**
+ * Gera e realiza o download do arquivo modelo XLSX específico para importação de colaboradores.
+ */
+export function generateCollaboratorImportTemplateXLSX(): void {
+  const wb = buildCollaboratorImportTemplateWorkbook();
   // Disparar download no navegador
   triggerWorkbookDownload(wb, 'modelo_importacao_colaboradores.xlsx').catch(console.error);
 }
