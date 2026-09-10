@@ -35,6 +35,8 @@ interface A4TimelinePreviewProps {
   onEditPhotoCrop?: (index: number) => void;
   interactive?: boolean;
   showGrid?: boolean;
+  isReviewSheet?: boolean;
+  disableShadow?: boolean;
 }
 
 interface CanvasPhotoProps {
@@ -181,6 +183,8 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   onEditPhotoCrop,
   interactive = false,
   showGrid = false,
+  isReviewSheet = false,
+  disableShadow = false,
 }) => {
   // Base A4 canvas dimensions in pixels (Standard 96DPI A4: 794px x 1123px)
   const baseWidth = 794;
@@ -258,16 +262,29 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
   const nameFont = `${nameFontWeight} 30px ${nameFontFamily}`;
   const formattedStudentName = formatTimelineStudentName(cleanStudentName, nameBoxWidthPx, nameFont, 3);
 
+  // Na Folha de Conferência, aplicamos o desacoplamento geométrico estrito:
+  // 1. O elemento em escala 794x1123 é retirado do fluxo de layout (position: absolute) para não afetar o box model do DOM.
+  // 2. É posicionado com compensação subpixel perfeita dentro de containerWidth x containerHeight.
+  // 3. O container raiz passa a display: block / shrink-0 para não sofrer deslocamento de linha (baseline) de inline-block.
+  // 4. Sombras expansivas (shadow-2xl) são desativadas para garantir bordas retas e alinhamento milimétrico.
+  const subpixelOffsetX = isReviewSheet ? (containerWidth - baseWidth * scale) / 2 : 0;
+  const subpixelOffsetY = isReviewSheet ? (containerHeight - baseHeight * scale) / 2 : 0;
+
   return (
     <div
       style={{
         width: `${containerWidth}px`,
         height: `${containerHeight}px`,
+        display: isReviewSheet ? 'block' : undefined,
+        margin: isReviewSheet ? '0 auto' : undefined,
       }}
-      className="overflow-hidden relative inline-block shrink-0"
+      className={`overflow-hidden relative ${isReviewSheet ? 'block' : 'inline-block'} shrink-0`}
     >
       <div
         style={{
+          position: isReviewSheet ? 'absolute' : undefined,
+          left: isReviewSheet ? `${subpixelOffsetX}px` : undefined,
+          top: isReviewSheet ? `${subpixelOffsetY}px` : undefined,
           transform: isPrintScale ? `scale(${scaleX}, ${scaleY})` : `scale(${scale})`,
           transformOrigin: 'top left',
           width: `${baseWidth}px`,
@@ -282,7 +299,7 @@ export const A4TimelinePreview: React.FC<A4TimelinePreviewProps> = ({
             height: `${baseHeight}px`,
             fontFamily: model.fontFamily || "'Montserrat', sans-serif",
           }}
-          className={`relative bg-white ${isPrintScale ? '' : 'shadow-2xl'} overflow-hidden select-none print:shadow-none`}
+          className={`relative bg-white ${isPrintScale || disableShadow || isReviewSheet ? '' : 'shadow-2xl'} overflow-hidden select-none print:shadow-none`}
         >
         {/* Layer 0 (z-0) — Base A4 White Canvas Background */}
         <div

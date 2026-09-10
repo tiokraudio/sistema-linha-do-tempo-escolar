@@ -220,6 +220,7 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
               {/* Área Disponível do Card: Centralização geométrica estrita (horizontal e vertical) */}
               {modelToUse ? (
                 <div
+                  id={`${idPrefix}-card-usable-area-${slotIdx}`}
                   style={{
                     flex: 1,
                     width: '100%',
@@ -229,9 +230,11 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
                     justifyContent: 'center',
                     overflow: 'hidden',
                     boxSizing: 'border-box',
+                    position: 'relative',
                   }}
                 >
                   <div
+                    id={`${idPrefix}-card-preview-wrapper-${slotIdx}`}
                     style={{
                       width: `${layout.previewWidth}px`,
                       height: `${layout.previewHeight}px`,
@@ -243,7 +246,6 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
                       overflow: 'hidden',
                       boxSizing: 'border-box',
                       margin: '0 auto',
-                      lineHeight: 0,
                     }}
                   >
                     <A4TimelinePreview
@@ -255,6 +257,8 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
                       photoItems={photoItems}
                       scale={layout.scale}
                       interactive={false}
+                      isReviewSheet={true}
+                      disableShadow={true}
                       personType={item.savedTimeline?.personType || item.student.personType || 'student'}
                     />
                   </div>
