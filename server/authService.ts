@@ -459,27 +459,49 @@ export function parseCookies(cookieHeader?: string): Record<string, string> {
 
 /**
  * Determina se a requisição atual deve utilizar o atributo Secure no cookie.
- * - Em localhost / 127.0.0.1 em HTTP: false (evita quebrar login em desenvolvimento local).
- * - Em conexões HTTPS ou atrás de proxies TLS (Cloud Run, Nginx com x-forwarded-proto): true.
+ * 
+ * Regras estritas de segurança para o atributo Secure:
+ * 1. HTTPS direto (req.secure === true ou req.protocol === 'https') → true
+ * 2. Proxy HTTPS confiável informando protocolo HTTPS (X-Forwarded-Proto: https, etc.) → true
+ * 3. Qualquer conexão HTTP real (localhost, 127.0.0.1, IP de rede local privada como 10.10.4.10:3000, 
+ *    192.168.x.x, mesmo em NODE_ENV=production) → false
+ *
+ * CRÍTICO: O atributo Secure NUNCA deve depender cegamente de NODE_ENV === 'production'.
+ * Em redes locais de escolas ou empresas onde o servidor é acessado via HTTP (ex: http://10.10.4.10:3000),
+ * se o cookie receber 'Secure', navegadores modernos descartam ou recusam-se a enviar o cookie
+ * em requisições de fotos e recursos protegidos (como <img src="/api/photos/:filename">).
  */
 export function isSecureRequest(req: express.Request): boolean {
-  // 1. Conexão direta HTTPS
-  if (req.secure) return true;
-
-  // 2. Proxy reverso informando protocolo HTTPS (Cloud Run, Nginx, Caddy, etc.)
-  const proto = req.headers['x-forwarded-proto'];
-  if (typeof proto === 'string' && proto.toLowerCase().includes('https')) {
+  // 1. Conexão direta HTTPS (TLS no socket ou protocolo HTTPS do Express)
+  if (req.secure === true || req.protocol === 'https') {
     return true;
   }
 
-  // 3. Em localhost / 127.0.0.1 em HTTP de desenvolvimento, nunca marcar Secure
-  const host = (req.headers.host || '').toLowerCase();
-  if (host.includes('localhost') || host.includes('127.0.0.1')) {
-    return false;
+  // 2. Proxy reverso informando protocolo HTTPS (Cloud Run, Nginx, Caddy, Traefik, etc.)
+  const proto = req.headers['x-forwarded-proto'];
+  if (proto) {
+    const protoStr = Array.isArray(proto) ? proto[0] : proto;
+    if (typeof protoStr === 'string') {
+      const clientProto = protoStr.split(',')[0].trim().toLowerCase();
+      if (clientProto === 'https') {
+        return true;
+      }
+    }
   }
 
-  // 4. Em produção geral não local
-  return process.env.NODE_ENV === 'production';
+  // 3. Cabeçalhos alternativos padrão de terminação SSL por proxies (IIS ARR, AWS ELB, etc.)
+  const forwardedSsl = req.headers['x-forwarded-ssl'];
+  if (typeof forwardedSsl === 'string' && forwardedSsl.toLowerCase() === 'on') {
+    return true;
+  }
+
+  const frontEndHttps = req.headers['front-end-https'];
+  if (typeof frontEndHttps === 'string' && frontEndHttps.toLowerCase() === 'on') {
+    return true;
+  }
+
+  // 4. Qualquer conexão HTTP não criptografada (localhost, 127.0.0.1, LAN IP como 10.10.4.10, etc.)
+  return false;
 }
 
 /**
@@ -501,6 +523,8 @@ export function getSessionCookieOptions(
 
 /**
  * Retorna as opções para remoção/expiração imediata do cookie no navegador.
+ * Mantém paridade estrita com getSessionCookieOptions para garantir que o navegador
+ * encontre e descarte o cookie corretamente (mesmo path, httpOnly, sameSite e secure).
  */
 export function getClearCookieOptions(req: express.Request): express.CookieOptions {
   return {
