@@ -35,62 +35,35 @@ interface LayoutConfig {
   scale: number;
 }
 
-const LAYOUT_CONFIGS: Record<ItemsPerPage, LayoutConfig> = {
-  2: {
-    columns: 1,
-    rows: 2,
-    gap: '12px',
-    cardPadding: '6px',
-    headerFontSize: '11px',
-    subHeaderFontSize: '9.5px',
-    previewWidth: 278,
-    previewHeight: 393,
-    scale: 0.35,
-  },
-  4: {
-    columns: 2,
-    rows: 2,
-    gap: '10px',
-    cardPadding: '6px',
-    headerFontSize: '10px',
-    subHeaderFontSize: '9px',
-    previewWidth: 278,
-    previewHeight: 393,
-    scale: 0.35,
-  },
-  6: {
-    columns: 2,
-    rows: 3,
-    gap: '8px',
-    cardPadding: '5px',
-    headerFontSize: '9.5px',
-    subHeaderFontSize: '8.5px',
-    previewWidth: 179,
-    previewHeight: 253,
-    scale: 0.225,
-  },
-  8: {
-    columns: 2,
-    rows: 4,
-    gap: '6px',
-    cardPadding: '4px',
-    headerFontSize: '9px',
-    subHeaderFontSize: '8px',
-    previewWidth: 131,
-    previewHeight: 185,
-    scale: 0.165,
-  },
-  10: {
-    columns: 2,
-    rows: 5,
-    gap: '5px',
-    cardPadding: '3px',
-    headerFontSize: '8.5px',
-    subHeaderFontSize: '7.5px',
-    previewWidth: 103,
-    previewHeight: 146,
-    scale: 0.13,
-  },
+export const A4_LOGICAL_WIDTH = 794;
+export const A4_LOGICAL_HEIGHT = 1123;
+
+const createLayoutConfig = (
+  columns: number,
+  rows: number,
+  gap: string,
+  cardPadding: string,
+  headerFontSize: string,
+  subHeaderFontSize: string,
+  scale: number
+): LayoutConfig => ({
+  columns,
+  rows,
+  gap,
+  cardPadding,
+  headerFontSize,
+  subHeaderFontSize,
+  scale,
+  previewWidth: Math.round(A4_LOGICAL_WIDTH * scale),
+  previewHeight: Math.round(A4_LOGICAL_HEIGHT * scale),
+});
+
+export const LAYOUT_CONFIGS: Record<ItemsPerPage, LayoutConfig> = {
+  2: createLayoutConfig(1, 2, '12px', '6px', '11px', '9.5px', 0.35),
+  4: createLayoutConfig(2, 2, '10px', '6px', '10px', '9px', 0.35),
+  6: createLayoutConfig(2, 3, '8px', '5px', '9.5px', '8.5px', 0.225),
+  8: createLayoutConfig(2, 4, '6px', '4px', '9px', '8px', 0.165),
+  10: createLayoutConfig(2, 5, '5px', '3px', '8.5px', '7.5px', 0.13),
 };
 
 interface ReviewSheetPrintModalProps {
@@ -193,17 +166,19 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
                 backgroundColor: '#ffffff',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between',
                 alignItems: 'center',
+                justifyContent: 'flex-start',
                 overflow: 'hidden',
                 boxSizing: 'border-box',
                 width: '100%',
                 height: '100%',
               }}
             >
+              {/* Header do Card com Nome e Turma */}
               <div
                 style={{
                   width: '100%',
+                  flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -242,31 +217,61 @@ const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
                 </span>
               </div>
 
-              {modelToUse && (
+              {/* Área Disponível do Card: Centralização geométrica estrita (horizontal e vertical) */}
+              {modelToUse ? (
                 <div
                   style={{
-                    width: `${layout.previewWidth}px`,
-                    height: `${layout.previewHeight}px`,
-                    overflow: 'hidden',
-                    position: 'relative',
+                    flex: 1,
+                    width: '100%',
+                    minHeight: 0,
                     display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'center',
-                    alignItems: 'flex-start',
-                    margin: '0 auto',
+                    overflow: 'hidden',
                     boxSizing: 'border-box',
                   }}
                 >
-                  <A4TimelinePreview
-                    id={`${idPrefix}-slot-${slotIdx}-${item.student.id}`}
-                    studentName={item.student.name}
-                    studentEnrollment={item.student.enrollment}
-                    model={modelToUse}
-                    schoolConfig={schoolConfig}
-                    photoItems={photoItems}
-                    scale={layout.scale}
-                    interactive={false}
-                    personType={item.savedTimeline?.personType || item.student.personType || 'student'}
-                  />
+                  <div
+                    style={{
+                      width: `${layout.previewWidth}px`,
+                      height: `${layout.previewHeight}px`,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      margin: '0 auto',
+                      lineHeight: 0,
+                    }}
+                  >
+                    <A4TimelinePreview
+                      id={`${idPrefix}-slot-${slotIdx}-${item.student.id}`}
+                      studentName={item.student.name}
+                      studentEnrollment={item.student.enrollment}
+                      model={modelToUse}
+                      schoolConfig={schoolConfig}
+                      photoItems={photoItems}
+                      scale={layout.scale}
+                      interactive={false}
+                      personType={item.savedTimeline?.personType || item.student.personType || 'student'}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#94a3b8',
+                    fontSize: '11px',
+                  }}
+                >
+                  Sem modelo
                 </div>
               )}
             </div>
@@ -777,8 +782,8 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
               position: 'fixed',
               top: '-9999px',
               left: '-9999px',
-              width: '794px',
-              height: '1123px',
+              width: `${A4_LOGICAL_WIDTH}px`,
+              height: `${A4_LOGICAL_HEIGHT}px`,
               pointerEvents: 'none',
               zIndex: -99,
               overflow: 'hidden',
@@ -787,32 +792,44 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
             <div
               id="review-sheet-offscreen-a4-page"
               style={{
-                width: '794px',
-                height: '1123px',
-                maxHeight: '1123px',
+                width: `${A4_LOGICAL_WIDTH}px`,
+                height: `${A4_LOGICAL_HEIGHT}px`,
+                maxHeight: `${A4_LOGICAL_HEIGHT}px`,
                 backgroundColor: '#ffffff',
                 boxSizing: 'border-box',
-                padding: '36px 40px 32px 40px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                overflow: 'hidden',
+                padding: 0,
                 margin: '0 auto',
+                overflow: 'hidden',
               }}
-              className="flex flex-col justify-between h-full box-border bg-white text-slate-900 font-sans"
             >
-              <ReviewSheetSinglePage
-                pageItems={activePageItems}
-                itemsPerPage={itemsPerPage}
-                schoolConfig={schoolConfig}
-                periodName={currentSheetPeriodName}
-                classNameLabel={currentSheetClassName}
-                pageIndex={progress.currentPage - 1}
-                totalPages={progress.totalPages}
-                layout={layout}
-                defaultModel={defaultModel}
-                idPrefix="offscreen"
-              />
+              <div
+                style={{
+                  width: `${A4_LOGICAL_WIDTH}px`,
+                  height: `${A4_LOGICAL_HEIGHT}px`,
+                  maxHeight: `${A4_LOGICAL_HEIGHT}px`,
+                  boxSizing: 'border-box',
+                  padding: '36px 40px 32px 40px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  overflow: 'hidden',
+                  backgroundColor: '#ffffff',
+                }}
+                className="flex flex-col justify-between h-full box-border bg-white text-slate-900 font-sans"
+              >
+                <ReviewSheetSinglePage
+                  pageItems={activePageItems}
+                  itemsPerPage={itemsPerPage}
+                  schoolConfig={schoolConfig}
+                  periodName={currentSheetPeriodName}
+                  classNameLabel={currentSheetClassName}
+                  pageIndex={progress.currentPage - 1}
+                  totalPages={progress.totalPages}
+                  layout={layout}
+                  defaultModel={defaultModel}
+                  idPrefix="offscreen"
+                />
+              </div>
             </div>
           </div>
         )}
