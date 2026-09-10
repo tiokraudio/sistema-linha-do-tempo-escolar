@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { WorkQueueItem, SchoolConfig, LayoutModel } from '../types';
 import { hasSavedTimelineComposition } from '../utils/workQueue';
 import { A4TimelinePreview, TimelinePhotoItemForPreview } from './A4TimelinePreview';
@@ -102,6 +103,185 @@ interface ReviewSheetPrintModalProps {
   activeClassFilter?: string;
   onClose: () => void;
 }
+
+interface ReviewSheetSinglePageProps {
+  pageItems: WorkQueueItem[];
+  itemsPerPage: ItemsPerPage;
+  schoolConfig: SchoolConfig;
+  periodName?: string;
+  classNameLabel?: string;
+  pageIndex: number;
+  totalPages: number;
+  layout: LayoutConfig;
+  defaultModel?: LayoutModel | null;
+  idPrefix?: string;
+}
+
+const ReviewSheetSinglePage: React.FC<ReviewSheetSinglePageProps> = ({
+  pageItems,
+  itemsPerPage,
+  schoolConfig,
+  periodName,
+  classNameLabel,
+  pageIndex,
+  totalPages,
+  layout,
+  defaultModel,
+  idPrefix = 'review',
+}) => {
+  return (
+    <>
+      {/* Header Padronizado */}
+      <A4PrintHeader
+        schoolConfig={schoolConfig}
+        title="FOLHA DE CONFERÊNCIA"
+        subtitle="CONFERÊNCIA DE COMPOSIÇÕES SALVAS DA LINHA DO TEMPO"
+        periodName={periodName}
+        className={classNameLabel}
+        pageIndex={pageIndex}
+        totalPages={totalPages}
+      />
+
+      {/* Dynamic Grid Container - Área Útil da Grade */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
+          gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+          gap: layout.gap,
+          flex: 1,
+          paddingTop: '10px',
+          paddingBottom: '10px',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
+        {Array.from({ length: itemsPerPage }).map((_, slotIdx) => {
+          const item = pageItems[slotIdx];
+          if (!item) {
+            return (
+              <div
+                key={`empty-slot-${slotIdx}`}
+                style={{
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: '8px',
+                  backgroundColor: '#f8fafc',
+                  boxSizing: 'border-box',
+                }}
+              />
+            );
+          }
+
+          const modelToUse = item.savedTimeline?.modelSnapshot || defaultModel;
+          const photoItems: TimelinePhotoItemForPreview[] = item.savedTimeline
+            ? (item.savedTimeline.photoItems || []).map((p) => ({
+                year: p.year,
+                className: p.className,
+                photoUrl: p.photoUrl,
+                cropSettings: p.cropSettings,
+                isPrimary: p.isPrimary,
+              }))
+            : [];
+
+          return (
+            <div
+              key={`slot-${slotIdx}-${item.student.id}`}
+              style={{
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: layout.cardPadding,
+                backgroundColor: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+                width: '100%',
+                height: '100%',
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '2px',
+                  marginBottom: '2px',
+                  fontSize: layout.headerFontSize,
+                  fontWeight: 800,
+                  color: '#1e293b',
+                  boxSizing: 'border-box',
+                  lineHeight: 1.2,
+                }}
+              >
+                <span
+                  style={{
+                    textTransform: 'uppercase',
+                    color: '#0f172a',
+                    fontWeight: 900,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: '65%',
+                  }}
+                  title={item.student.name}
+                >
+                  {item.student.name}
+                </span>
+                <span
+                  style={{
+                    color: '#64748b',
+                    fontSize: layout.subHeaderFontSize,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.latestClass} ({item.latestYear})
+                </span>
+              </div>
+
+              {modelToUse && (
+                <div
+                  style={{
+                    width: `${layout.previewWidth}px`,
+                    height: `${layout.previewHeight}px`,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    margin: '0 auto',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <A4TimelinePreview
+                    id={`${idPrefix}-slot-${slotIdx}-${item.student.id}`}
+                    studentName={item.student.name}
+                    studentEnrollment={item.student.enrollment}
+                    model={modelToUse}
+                    schoolConfig={schoolConfig}
+                    photoItems={photoItems}
+                    scale={layout.scale}
+                    interactive={false}
+                    personType={item.savedTimeline?.personType || item.student.personType || 'student'}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rodapé Padronizado */}
+      <A4PrintFooter
+        systemLabel="Sistema Linha do Tempo Escolar — Folha de Conferência"
+        itemsCount={pageItems.length}
+      />
+    </>
+  );
+};
 
 export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
   isOpen,
@@ -317,8 +497,17 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
 
   const layout = LAYOUT_CONFIGS[itemsPerPage];
 
+  const printPagesSlices = useMemo(() => {
+    const pages: WorkQueueItem[][] = [];
+    for (let i = 0; i < selectedEligibleItems.length; i += itemsPerPage) {
+      pages.push(selectedEligibleItems.slice(i, i + itemsPerPage));
+    }
+    return pages;
+  }, [selectedEligibleItems, itemsPerPage]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 review-sheet-screen-only no-print">
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-white">
@@ -583,6 +772,7 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
         {/* Hidden offscreen A4 Portrait Layout Container (794x1123 px standard grid configured by itemsPerPage) */}
         {activePageItems.length > 0 && (
           <div
+            className="no-print"
             style={{
               position: 'fixed',
               top: '-9999px',
@@ -607,156 +797,21 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 overflow: 'hidden',
+                margin: '0 auto',
               }}
               className="flex flex-col justify-between h-full box-border bg-white text-slate-900 font-sans"
             >
-              {/* Header Padronizado */}
-              <A4PrintHeader
+              <ReviewSheetSinglePage
+                pageItems={activePageItems}
+                itemsPerPage={itemsPerPage}
                 schoolConfig={schoolConfig}
-                title="FOLHA DE CONFERÊNCIA"
-                subtitle="CONFERÊNCIA DE COMPOSIÇÕES SALVAS DA LINHA DO TEMPO"
                 periodName={currentSheetPeriodName}
-                className={currentSheetClassName}
+                classNameLabel={currentSheetClassName}
                 pageIndex={progress.currentPage - 1}
                 totalPages={progress.totalPages}
-              />
-
-              {/* Dynamic Grid Container - Área Útil da Grade */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-                  gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-                  gap: layout.gap,
-                  flex: 1,
-                  paddingTop: '10px',
-                  paddingBottom: '10px',
-                  boxSizing: 'border-box',
-                  overflow: 'hidden',
-                }}
-              >
-                {Array.from({ length: itemsPerPage }).map((_, slotIdx) => {
-                  const item = activePageItems[slotIdx];
-                  if (!item) {
-                    return (
-                      <div
-                        key={`empty-slot-${slotIdx}`}
-                        style={{
-                          border: '1px dashed #cbd5e1',
-                          borderRadius: '8px',
-                          backgroundColor: '#f8fafc',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    );
-                  }
-
-                  const modelToUse = item.savedTimeline?.modelSnapshot || defaultModel;
-                  const photoItems: TimelinePhotoItemForPreview[] = item.savedTimeline
-                    ? (item.savedTimeline.photoItems || []).map((p) => ({
-                        year: p.year,
-                        className: p.className,
-                        photoUrl: p.photoUrl,
-                        cropSettings: p.cropSettings,
-                        isPrimary: p.isPrimary,
-                      }))
-                    : [];
-
-                  return (
-                    <div
-                      key={`slot-${slotIdx}-${item.student.id}`}
-                      style={{
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '8px',
-                        padding: layout.cardPadding,
-                        backgroundColor: '#ffffff',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        overflow: 'hidden',
-                        boxSizing: 'border-box',
-                        width: '100%',
-                        height: '100%',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          borderBottom: '1px solid #e2e8f0',
-                          paddingBottom: '2px',
-                          marginBottom: '2px',
-                          fontSize: layout.headerFontSize,
-                          fontWeight: 800,
-                          color: '#1e293b',
-                          boxSizing: 'border-box',
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        <span
-                          style={{
-                            textTransform: 'uppercase',
-                            color: '#0f172a',
-                            fontWeight: 900,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            maxWidth: '65%',
-                          }}
-                          title={item.student.name}
-                        >
-                          {item.student.name}
-                        </span>
-                        <span
-                          style={{
-                            color: '#64748b',
-                            fontSize: layout.subHeaderFontSize,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {item.latestClass} ({item.latestYear})
-                        </span>
-                      </div>
-
-                      {modelToUse && (
-                        <div
-                          style={{
-                            width: `${layout.previewWidth}px`,
-                            height: `${layout.previewHeight}px`,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'flex-start',
-                            margin: '0 auto',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          <A4TimelinePreview
-                            id={`review-slot-${slotIdx}-${item.student.id}`}
-                            studentName={item.student.name}
-                            studentEnrollment={item.student.enrollment}
-                            model={modelToUse}
-                            schoolConfig={schoolConfig}
-                            photoItems={photoItems}
-                            scale={layout.scale}
-                            interactive={false}
-                            personType={item.savedTimeline?.personType || item.student.personType || 'student'}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Rodapé Padronizado */}
-              <A4PrintFooter
-                systemLabel="Sistema Linha do Tempo Escolar — Folha de Conferência"
-                itemsCount={activePageItems.length}
+                layout={layout}
+                defaultModel={defaultModel}
+                idPrefix="offscreen"
               />
             </div>
           </div>
@@ -775,20 +830,189 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
           </Button>
 
           {!successMsg && (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              icon={Printer}
-              onClick={handleStartReviewGeneration}
-              isLoading={isGenerating}
-              disabled={isGenerating || selectedEligibleItems.length === 0}
-            >
-              {`Imprimir (${selectedEligibleItems.length} selecionados)`}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={Printer}
+                onClick={() => window.print()}
+                disabled={isGenerating || selectedEligibleItems.length === 0}
+                title="Imprimir diretamente no navegador (A4 centralizado)"
+              >
+                Imprimir via Navegador
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                icon={Printer}
+                onClick={handleStartReviewGeneration}
+                isLoading={isGenerating}
+                disabled={isGenerating || selectedEligibleItems.length === 0}
+              >
+                {`Imprimir (${selectedEligibleItems.length} selecionados)`}
+              </Button>
+            </div>
           )}
         </div>
       </div>
     </div>
+
+    {/* Portal de Impressão A4 Exclusivo da Folha de Conferência */}
+    {typeof document !== 'undefined' && createPortal(
+      <div
+        id="review-sheet-print-container"
+        className="review-sheet-print-wrapper"
+      >
+        {printPagesSlices.map((pageSlice, pIdx) => {
+          const pagePeriod =
+            activePeriodFilter ||
+            pageSlice[0]?.latestYear ||
+            savedCompositionsPool[0]?.latestYear ||
+            undefined;
+          let pageClassLabel: string | undefined = undefined;
+          if (classFilter !== 'all') {
+            pageClassLabel = classFilter;
+          } else {
+            const classesOnPage = Array.from(
+              new Set<string>(
+                pageSlice
+                  .map((i) => i.latestClass)
+                  .filter((c): c is string => Boolean(c) && c !== '—')
+              )
+            );
+            if (classesOnPage.length === 1) {
+              pageClassLabel = classesOnPage[0];
+            }
+          }
+
+          return (
+            <div
+              key={`review-sheet-print-page-${pIdx}`}
+              className="review-sheet-print-page"
+              style={{
+                width: '210mm',
+                height: '297mm',
+                minWidth: '210mm',
+                maxWidth: '210mm',
+                minHeight: '297mm',
+                maxHeight: '297mm',
+                margin: '0 auto',
+                padding: '36px 40px 32px 40px',
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                overflow: 'hidden',
+              }}
+            >
+              <ReviewSheetSinglePage
+                pageItems={pageSlice}
+                itemsPerPage={itemsPerPage}
+                schoolConfig={schoolConfig}
+                periodName={pagePeriod}
+                classNameLabel={pageClassLabel}
+                pageIndex={pIdx}
+                totalPages={printPagesSlices.length || 1}
+                layout={layout}
+                defaultModel={defaultModel}
+                idPrefix={`print-p${pIdx}`}
+              />
+            </div>
+          );
+        })}
+      </div>,
+      document.body
+    )}
+
+    {/* Regras CSS de Impressão Isoladas para a Folha de Conferência */}
+    <style>{`
+      @media screen {
+        .review-sheet-print-wrapper {
+          display: none !important;
+        }
+      }
+
+      @media print {
+        @page {
+          size: A4 portrait;
+          margin: 0 !important;
+        }
+
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          min-width: 100% !important;
+          background: #ffffff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        /* Ocultar a interface normal do app e o modal de tela */
+        #root,
+        .review-sheet-screen-only,
+        .no-print,
+        .print-ignore {
+          display: none !important;
+        }
+
+        /* Wrapper específico da conferência: 100% de largura disponível, centralização horizontal */
+        .review-sheet-print-wrapper {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 100% !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          position: relative !important;
+          left: 0 !important;
+          right: 0 !important;
+          top: 0 !important;
+          transform: none !important;
+          background-color: #ffffff !important;
+          box-sizing: border-box !important;
+        }
+
+        /* Página A4 padronizada e centralizada na folha física */
+        .review-sheet-print-page {
+          width: 210mm !important;
+          height: 297mm !important;
+          min-width: 210mm !important;
+          max-width: 210mm !important;
+          min-height: 297mm !important;
+          max-height: 297mm !important;
+          margin: 0 auto !important;
+          padding: 36px 40px 32px 40px !important;
+          box-sizing: border-box !important;
+          background-color: #ffffff !important;
+          position: relative !important;
+          left: auto !important;
+          right: auto !important;
+          top: auto !important;
+          transform: none !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          overflow: hidden !important;
+          page-break-after: always !important;
+          break-after: page !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        .review-sheet-print-page:last-child {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+        }
+      }
+    `}</style>
+  </>
   );
 };
