@@ -1,5 +1,6 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { Student, AcademicYearRecord } from '../types';
+import { extractCellValueAsString } from './xlsxImportHelper';
 
 export interface RawCollaboratorImportRow {
   rowIndex: number;
@@ -32,42 +33,65 @@ export interface CollaboratorBatchImportSummary {
 }
 
 /**
+ * Dispara o download de um workbook ExcelJS no navegador.
+ */
+async function triggerWorkbookDownload(wb: ExcelJS.Workbook, filename: string): Promise<void> {
+  const buffer = await wb.xlsx.writeBuffer();
+  if (typeof document !== 'undefined') {
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
  * Gera e realiza o download do arquivo modelo XLSX específico para importação de colaboradores.
  */
 export function generateCollaboratorImportTemplateXLSX(): void {
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sistema Linha do Tempo Escolar';
+  wb.created = new Date();
 
   // 1. Aba Principal de Dados ("Colaboradores")
+  const wsData = wb.addWorksheet('Colaboradores');
+
+  // Configurar colunas e larguras
+  wsData.columns = [
+    { header: 'Matrícula / Código', key: 'enrollment', width: 22 },
+    { header: 'Nome completo', key: 'name', width: 42 },
+  ];
+
   const dataRows = [
-    ['Matrícula / Código', 'Nome completo'],
-    ['000101', 'ANA MARIA SILVA'],
-    ['000102', 'CARLOS EDUARDO SANTOS'],
-    ['000103', 'FERNANDA OLIVEIRA'],
-    ['000104', 'MARCOS ROBERTO PEREIRA'],
-    ['000105', 'JULIANA ALVES COSTA'],
+    { enrollment: '000101', name: 'ANA MARIA SILVA' },
+    { enrollment: '000102', name: 'CARLOS EDUARDO SANTOS' },
+    { enrollment: '000103', name: 'FERNANDA OLIVEIRA' },
+    { enrollment: '000104', name: 'MARCOS ROBERTO PEREIRA' },
+    { enrollment: '000105', name: 'JULIANA ALVES COSTA' },
   ];
 
-  const wsData = XLSX.utils.aoa_to_sheet(dataRows);
-
-  // Configurar largura das colunas
-  wsData['!cols'] = [
-    { wch: 22 }, // Matrícula / Código
-    { wch: 42 }, // Nome completo
-  ];
-
-  // Forçar células da coluna Matrícula/Código (A) como tipo TEXTO ('s') com formato '@'
-  for (let r = 1; r < dataRows.length; r++) {
-    const cellRef = XLSX.utils.encode_cell({ r, c: 0 });
-    if (wsData[cellRef]) {
-      wsData[cellRef].t = 's';
-      wsData[cellRef].z = '@';
-    }
-  }
-
-  XLSX.utils.book_append_sheet(wb, wsData, 'Colaboradores');
+  dataRows.forEach((item) => {
+    const row = wsData.addRow([item.enrollment, item.name]);
+    // Forçar célula da coluna Matrícula/Código (coluna 1 / A) como tipo TEXTO com formato '@'
+    const cellEnrollment = row.getCell(1);
+    cellEnrollment.value = item.enrollment;
+    cellEnrollment.numFmt = '@';
+  });
 
   // 2. Aba de Instruções ("INSTRUÇÕES")
-  const instructionsData: (string | number)[][] = [
+  const wsInstructions = wb.addWorksheet('INSTRUÇÕES');
+  wsInstructions.columns = [
+    { width: 95 },
+  ];
+
+  const instructionsData: string[][] = [
     ['INSTRUÇÕES PARA PREENCHIMENTO DO MODELO DE IMPORTAÇÃO DE COLABORADORES'],
     [''],
     ['1. MATRÍCULA / CÓDIGO (Obrigatório):'],
@@ -93,140 +117,146 @@ export function generateCollaboratorImportTemplateXLSX(): void {
     ['   - Linhas duplicadas na própria planilha serão sinalizadas como erro.'],
   ];
 
-  const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
-  wsInstructions['!cols'] = [
-    { wch: 95 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, wsInstructions, 'INSTRUÇÕES');
+  instructionsData.forEach((line) => {
+    wsInstructions.addRow(line);
+  });
 
   // Disparar download no navegador
-  XLSX.writeFile(wb, 'modelo_importacao_colaboradores.xlsx');
+  triggerWorkbookDownload(wb, 'modelo_importacao_colaboradores.xlsx').catch(console.error);
 }
 
 /**
  * Lê e analisa o arquivo XLSX de colaboradores enviado pelo usuário preservando códigos/matrículas como texto.
  */
 export async function parseCollaboratorXLSXFile(file: File): Promise<RawCollaboratorImportRow[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  if (!file) {
+    throw new Error('Nenhum arquivo fornecido para importação de colaboradores.');
+  }
 
-    reader.onload = (e) => {
-      try {
-        const buffer = e.target?.result as ArrayBuffer;
-        if (!buffer) {
-          throw new Error('Arquivo vazio ou ilegível.');
-        }
+  // Limite de segurança contra DoS: max 10MB
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('O arquivo excede o limite máximo de tamanho permitido (10 MB).');
+  }
 
-        const workbook = XLSX.read(buffer, {
-          type: 'array',
-          cellDates: false,
-          raw: false, // Preserva strings formatadas com zeros à esquerda
-        });
+  // Detecção precoce de arquivos .xls legados
+  const fileNameLower = (file.name || '').toLowerCase();
+  if (fileNameLower.endsWith('.xls') && !fileNameLower.endsWith('.xlsx')) {
+    throw new Error(
+      'Arquivos no formato legado .xls (Excel 97-2003) não são suportados por motivos de segurança. ' +
+      'Por favor, abra a planilha no Microsoft Excel, Google Planilhas ou LibreOffice e salve-a como Pasta de Trabalho do Excel (.xlsx).'
+    );
+  }
 
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          throw new Error('A planilha não contém abas.');
-        }
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await file.arrayBuffer();
+  } catch {
+    throw new Error('Erro ao ler o arquivo selecionado.');
+  }
 
-        // Usar a primeira aba ou aba que contenha 'colaborador', 'funcionario' ou 'dados'
-        const targetSheetName =
-          workbook.SheetNames.find((name) => {
-            const lower = name.toLowerCase();
-            return lower.includes('colaborador') || lower.includes('funciona') || lower.includes('dados') || lower.includes('equipe');
-          }) || workbook.SheetNames[0];
+  if (!buffer || buffer.byteLength === 0) {
+    throw new Error('Arquivo vazio ou ilegível.');
+  }
 
-        const sheet = workbook.Sheets[targetSheetName];
-        if (!sheet) {
-          throw new Error('Não foi possível ler os dados da planilha.');
-        }
+  const wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(buffer);
+  } catch (err: any) {
+    throw new Error('O arquivo selecionado não é uma planilha Excel (.xlsx) válida ou está corrompido.');
+  }
 
-        // Converter matriz bruta com valores de texto
-        const rawGrid: any[][] = XLSX.utils.sheet_to_json(sheet, {
-          header: 1,
-          raw: false,
-          defval: '',
-        });
+  if (!wb.worksheets || wb.worksheets.length === 0) {
+    throw new Error('A planilha não contém abas.');
+  }
 
-        if (!rawGrid || rawGrid.length === 0) {
-          throw new Error('A planilha está vazia.');
-        }
+  // Limite de segurança: max 20 abas
+  if (wb.worksheets.length > 20) {
+    throw new Error('A planilha excede o limite de segurança de abas permitidas (máx 20).');
+  }
 
-        // Identificar linha do cabeçalho
-        let headerRowIndex = -1;
-        let colEnrollment = -1;
-        let colName = -1;
+  // Usar a primeira aba ou aba que contenha 'colaborador', 'funcionario', 'dados' ou 'equipe'
+  const targetSheet =
+    wb.worksheets.find((ws) => {
+      const lower = ws.name.toLowerCase();
+      return lower.includes('colaborador') || lower.includes('funciona') || lower.includes('dados') || lower.includes('equipe');
+    }) || wb.worksheets[0];
 
-        for (let r = 0; r < Math.min(rawGrid.length, 10); r++) {
-          const row = rawGrid[r];
-          if (!Array.isArray(row)) continue;
+  if (!targetSheet || targetSheet.rowCount === 0) {
+    throw new Error('A planilha está vazia ou não contém dados legíveis.');
+  }
 
-          for (let c = 0; c < row.length; c++) {
-            const cellText = String(row[c] || '').trim().toLowerCase();
-            const cellNorm = cellText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Limite de segurança: max 10.000 linhas
+  if (targetSheet.rowCount > 10000) {
+    throw new Error('A planilha excede o limite máximo permitido de 10.000 linhas.');
+  }
 
-            if (
-              colEnrollment === -1 &&
-              (cellNorm.includes('matricula') || cellNorm.includes('codigo') || cellNorm === 'cod' || cellNorm === 'id' || cellNorm === 'mat' || cellNorm.includes('identifica'))
-            ) {
-              colEnrollment = c;
-            } else if (
-              colName === -1 &&
-              (cellNorm.includes('nome') || cellNorm.includes('colaborador') || cellNorm.includes('funciona') || cellNorm.includes('pessoa'))
-            ) {
-              colName = c;
-            }
-          }
+  // Identificar linha do cabeçalho
+  let headerRowIndex = -1;
+  let colEnrollment = -1;
+  let colName = -1;
 
-          if (colEnrollment !== -1 && colName !== -1) {
-            headerRowIndex = r;
-            break;
-          }
-        }
+  const maxHeaderSearch = Math.min(targetSheet.rowCount, 10);
 
-        // Fallback para posições padrão 0, 1 se cabeçalho não foi encontrado por texto
-        if (headerRowIndex === -1) {
-          headerRowIndex = 0;
-          colEnrollment = 0;
-          colName = 1;
-        }
+  for (let r = 1; r <= maxHeaderSearch; r++) {
+    const row = targetSheet.getRow(r);
+    if (!row || row.cellCount === 0) continue;
 
-        const rows: RawCollaboratorImportRow[] = [];
+    for (let c = 1; c <= Math.max(row.cellCount, 10); c++) {
+      const cellText = extractCellValueAsString(row.getCell(c)).toLowerCase();
+      const cellNorm = cellText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        for (let r = headerRowIndex + 1; r < rawGrid.length; r++) {
-          const row = rawGrid[r];
-          if (!Array.isArray(row)) continue;
-
-          const rawEnrollment = row[colEnrollment] !== undefined ? String(row[colEnrollment]).trim() : '';
-          const rawName = row[colName] !== undefined ? String(row[colName]).trim() : '';
-
-          // Ignorar linhas totalmente em branco
-          if (!rawEnrollment && !rawName) {
-            continue;
-          }
-
-          rows.push({
-            rowIndex: r + 1, // 1-indexed para o usuário
-            enrollment: rawEnrollment,
-            name: rawName,
-          });
-        }
-
-        if (rows.length === 0) {
-          throw new Error('Nenhum registro de colaborador foi encontrado na planilha.');
-        }
-
-        resolve(rows);
-      } catch (err: any) {
-        reject(new Error(err.message || 'Erro ao processar arquivo XLSX de colaboradores.'));
+      if (
+        colEnrollment === -1 &&
+        (cellNorm.includes('matricula') || cellNorm.includes('codigo') || cellNorm === 'cod' || cellNorm === 'id' || cellNorm === 'mat' || cellNorm.includes('identifica'))
+      ) {
+        colEnrollment = c;
+      } else if (
+        colName === -1 &&
+        (cellNorm.includes('nome') || cellNorm.includes('colaborador') || cellNorm.includes('funciona') || cellNorm.includes('pessoa'))
+      ) {
+        colName = c;
       }
-    };
+    }
 
-    reader.onerror = () => {
-      reject(new Error('Erro ao ler o arquivo selecionado.'));
-    };
+    if (colEnrollment !== -1 && colName !== -1) {
+      headerRowIndex = r;
+      break;
+    }
+  }
 
-    reader.readAsArrayBuffer(file);
-  });
+  // Fallback para posições padrão 1, 2 se cabeçalho não foi encontrado por texto
+  if (headerRowIndex === -1) {
+    headerRowIndex = 1;
+    colEnrollment = 1;
+    colName = 2;
+  }
+
+  const rows: RawCollaboratorImportRow[] = [];
+
+  for (let r = headerRowIndex + 1; r <= targetSheet.rowCount; r++) {
+    const row = targetSheet.getRow(r);
+    if (!row) continue;
+
+    const rawEnrollment = extractCellValueAsString(row.getCell(colEnrollment));
+    const rawName = extractCellValueAsString(row.getCell(colName));
+
+    // Ignorar linhas totalmente em branco
+    if (!rawEnrollment && !rawName) {
+      continue;
+    }
+
+    rows.push({
+      rowIndex: r, // 1-indexed para o usuário
+      enrollment: rawEnrollment,
+      name: rawName,
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error('Nenhum registro de colaborador foi encontrado na planilha.');
+  }
+
+  return rows;
 }
 
 /**

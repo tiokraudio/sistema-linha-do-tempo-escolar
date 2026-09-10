@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { Student, AcademicYearRecord, ClassRecord, AcademicPeriod } from '../types';
 import { validateStudentProgression, getPedagogicalPosition, getPedagogicalLabel } from './pedagogicalStructure';
 
@@ -33,10 +33,97 @@ export interface BatchImportSummary {
 }
 
 /**
+ * Utilitário seguro para extrair o valor de uma célula como texto puro,
+ * preservando formatações com zeros à esquerda e sem executar código malicioso/fórmulas.
+ */
+export function extractCellValueAsString(cell: ExcelJS.Cell): string {
+  if (cell.value === null || cell.value === undefined) {
+    return '';
+  }
+
+  // Se o valor for string direta
+  if (typeof cell.value === 'string') {
+    return cell.value.trim();
+  }
+
+  // Se for número
+  if (typeof cell.value === 'number') {
+    // Se a célula possuir formatação com zeros (ex: '000000')
+    const fmt = cell.numFmt;
+    if (fmt && /^0+$/.test(fmt)) {
+      return String(cell.value).padStart(fmt.length, '0');
+    }
+    return String(cell.value);
+  }
+
+  // Se for boolean
+  if (typeof cell.value === 'boolean') {
+    return String(cell.value);
+  }
+
+  // Se for Date
+  if (cell.value instanceof Date) {
+    return cell.value.toISOString().split('T')[0];
+  }
+
+  // Se for objeto (fórmula, rich text, hyperlink, etc.)
+  if (typeof cell.value === 'object') {
+    const obj = cell.value as any;
+
+    // Rich Text
+    if (Array.isArray(obj.richText)) {
+      return obj.richText.map((chunk: any) => chunk.text || '').join('').trim();
+    }
+
+    // Fórmula (usa o resultado já computado em cache, sem execução dinâmica)
+    if ('result' in obj) {
+      if (obj.result === null || obj.result === undefined) return '';
+      if (typeof obj.result === 'object' && obj.result instanceof Date) {
+        return obj.result.toISOString().split('T')[0];
+      }
+      return String(obj.result).trim();
+    }
+
+    // Hyperlink
+    if ('text' in obj && typeof obj.text === 'string') {
+      return obj.text.trim();
+    }
+
+    if ('hyperlink' in obj && typeof obj.hyperlink === 'string') {
+      return obj.text ? String(obj.text).trim() : obj.hyperlink.trim();
+    }
+  }
+
+  return String(cell.value).trim();
+}
+
+/**
+ * Dispara o download de um workbook ExcelJS no navegador.
+ */
+async function triggerWorkbookDownload(wb: ExcelJS.Workbook, filename: string): Promise<void> {
+  const buffer = await wb.xlsx.writeBuffer();
+  if (typeof document !== 'undefined') {
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
  * Gera e realiza o download do arquivo modelo XLSX formatado com texto e instruções.
  */
 export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Sistema Linha do Tempo Escolar';
+  wb.created = new Date();
 
   // 1. Aba Principal de Dados ("Alunos")
   const sampleClasses = activeClasses.length > 0
@@ -51,36 +138,40 @@ export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
   const c2 = sampleClasses[1]?.name || c1;
   const c3 = sampleClasses[2]?.name || c1;
 
+  const wsData = wb.addWorksheet('Alunos');
+
+  // Configurar colunas e larguras
+  wsData.columns = [
+    { header: 'Matrícula', key: 'enrollment', width: 18 },
+    { header: 'Nome completo', key: 'name', width: 38 },
+    { header: 'Turma', key: 'className', width: 28 },
+  ];
+
   const dataRows = [
-    ['Matrícula', 'Nome completo', 'Turma'],
-    ['000123', 'JOÃO DA SILVA', c1],
-    ['000124', 'MARIA SOUZA', c1],
-    ['000125', 'PEDRO SANTOS', c2],
-    ['000126', 'ANA CAROLINA LIMA', c3],
+    { enrollment: '000123', name: 'JOÃO DA SILVA', className: c1 },
+    { enrollment: '000124', name: 'MARIA SOUZA', className: c1 },
+    { enrollment: '000125', name: 'PEDRO SANTOS', className: c2 },
+    { enrollment: '000126', name: 'ANA CAROLINA LIMA', className: c3 },
   ];
 
-  const wsData = XLSX.utils.aoa_to_sheet(dataRows);
-
-  // Configurar largura das colunas
-  wsData['!cols'] = [
-    { wch: 18 }, // Matrícula
-    { wch: 38 }, // Nome completo
-    { wch: 28 }, // Turma
-  ];
-
-  // Forçar células da coluna Matrícula (A) como tipo TEXTO ('s') com formato '@'
-  for (let r = 1; r < dataRows.length; r++) {
-    const cellRef = XLSX.utils.encode_cell({ r, c: 0 });
-    if (wsData[cellRef]) {
-      wsData[cellRef].t = 's';
-      wsData[cellRef].z = '@';
-    }
-  }
-
-  XLSX.utils.book_append_sheet(wb, wsData, 'Alunos');
+  dataRows.forEach((item) => {
+    const row = wsData.addRow([item.enrollment, item.name, item.className]);
+    // Forçar célula da coluna Matrícula (coluna 1 / A) como tipo TEXTO com formato '@'
+    const cellEnrollment = row.getCell(1);
+    cellEnrollment.value = item.enrollment;
+    cellEnrollment.numFmt = '@';
+  });
 
   // 2. Aba de Instruções e Turmas Ativas ("INSTRUÇÕES")
-  const instructionsData: (string | number)[][] = [
+  const wsInstructions = wb.addWorksheet('INSTRUÇÕES');
+  wsInstructions.columns = [
+    { width: 10 },
+    { width: 38 },
+    { width: 30 },
+    { width: 15 },
+  ];
+
+  const instructionsHeader = [
     ['INSTRUÇÕES PARA PREENCHIMENTO DO MODELO DE IMPORTAÇÃO'],
     [''],
     ['1. MATRÍCULA (Obrigatório):'],
@@ -110,9 +201,13 @@ export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
     ['Ordem', 'Nome da Turma', 'Etapa Escolar', 'Status'],
   ];
 
+  instructionsHeader.forEach((line) => {
+    wsInstructions.addRow(line);
+  });
+
   if (activeClasses.length > 0) {
     activeClasses.forEach((cls, idx) => {
-      instructionsData.push([
+      wsInstructions.addRow([
         idx + 1,
         cls.name,
         cls.stageName || cls.stage || 'Geral',
@@ -120,154 +215,154 @@ export function generateImportTemplateXLSX(activeClasses: ClassRecord[]): void {
       ]);
     });
   } else {
-    instructionsData.push([1, 'Nenhuma turma cadastrada ou ativa', '-', '-']);
+    wsInstructions.addRow([1, 'Nenhuma turma cadastrada ou ativa', '-', '-']);
   }
 
-  const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
-  wsInstructions['!cols'] = [
-    { wch: 10 },
-    { wch: 38 },
-    { wch: 30 },
-    { wch: 15 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, wsInstructions, 'INSTRUÇÕES');
-
   // Disparar download no navegador
-  XLSX.writeFile(wb, 'modelo_importacao_alunos.xlsx');
+  triggerWorkbookDownload(wb, 'modelo_importacao_alunos.xlsx').catch(console.error);
 }
 
 /**
  * Lê e analisa o arquivo XLSX enviado pelo usuário preservando matrículas como texto.
  */
 export async function parseXLSXFile(file: File): Promise<RawImportRow[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  if (!file) {
+    throw new Error('Nenhum arquivo fornecido para importação.');
+  }
 
-    reader.onload = (e) => {
-      try {
-        const buffer = e.target?.result as ArrayBuffer;
-        if (!buffer) {
-          throw new Error('Arquivo vazio ou ilegível.');
-        }
+  // Limite de segurança contra DoS: max 10MB
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('O arquivo excede o limite máximo de tamanho permitido (10 MB).');
+  }
 
-        const workbook = XLSX.read(buffer, {
-          type: 'array',
-          cellDates: false,
-          raw: false, // Preserva strings formatadas com zeros à esquerda
-        });
+  // Detecção precoce de arquivos .xls legados
+  const fileNameLower = (file.name || '').toLowerCase();
+  if (fileNameLower.endsWith('.xls') && !fileNameLower.endsWith('.xlsx')) {
+    throw new Error(
+      'Arquivos no formato legado .xls (Excel 97-2003) não são suportados por motivos de segurança. ' +
+      'Por favor, abra a planilha no Microsoft Excel, Google Planilhas ou LibreOffice e salve-a como Pasta de Trabalho do Excel (.xlsx).'
+    );
+  }
 
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          throw new Error('A planilha não contém abas.');
-        }
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await file.arrayBuffer();
+  } catch {
+    throw new Error('Erro ao ler o arquivo selecionado.');
+  }
 
-        // Usar a primeira aba ou aba que contenha 'aluno'
-        const targetSheetName =
-          workbook.SheetNames.find((name) =>
-            name.toLowerCase().includes('aluno') || name.toLowerCase().includes('dados')
-          ) || workbook.SheetNames[0];
+  if (!buffer || buffer.byteLength === 0) {
+    throw new Error('Arquivo vazio ou ilegível.');
+  }
 
-        const sheet = workbook.Sheets[targetSheetName];
-        if (!sheet) {
-          throw new Error('Não foi possível ler os dados da planilha.');
-        }
+  const wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(buffer);
+  } catch (err: any) {
+    throw new Error('O arquivo selecionado não é uma planilha Excel (.xlsx) válida ou está corrompido.');
+  }
 
-        // Converter matriz bruta com valores de texto
-        const rawGrid: any[][] = XLSX.utils.sheet_to_json(sheet, {
-          header: 1,
-          raw: false,
-          defval: '',
-        });
+  if (!wb.worksheets || wb.worksheets.length === 0) {
+    throw new Error('A planilha não contém abas.');
+  }
 
-        if (!rawGrid || rawGrid.length === 0) {
-          throw new Error('A planilha está vazia.');
-        }
+  // Limite de segurança: max 20 abas
+  if (wb.worksheets.length > 20) {
+    throw new Error('A planilha excede o limite de segurança de abas permitidas (máx 20).');
+  }
 
-        // Identificar linha do cabeçalho
-        let headerRowIndex = -1;
-        let colEnrollment = -1;
-        let colName = -1;
-        let colClass = -1;
+  // Usar a primeira aba ou aba que contenha 'aluno' ou 'dados'
+  const targetSheet =
+    wb.worksheets.find((ws) => {
+      const lower = ws.name.toLowerCase();
+      return lower.includes('aluno') || lower.includes('dados');
+    }) || wb.worksheets[0];
 
-        for (let r = 0; r < Math.min(rawGrid.length, 10); r++) {
-          const row = rawGrid[r];
-          if (!Array.isArray(row)) continue;
+  if (!targetSheet || targetSheet.rowCount === 0) {
+    throw new Error('A planilha está vazia ou não contém dados legíveis.');
+  }
 
-          for (let c = 0; c < row.length; c++) {
-            const cellText = String(row[c] || '').trim().toLowerCase();
-            const cellNorm = cellText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Limite de segurança: max 10.000 linhas
+  if (targetSheet.rowCount > 10000) {
+    throw new Error('A planilha excede o limite máximo permitido de 10.000 linhas.');
+  }
 
-            if (
-              colEnrollment === -1 &&
-              (cellNorm.includes('matricula') || cellNorm === 'mat' || cellNorm.includes('ra') || cellNorm === 'id')
-            ) {
-              colEnrollment = c;
-            } else if (
-              colName === -1 &&
-              (cellNorm.includes('nome') || cellNorm.includes('aluno') || cellNorm.includes('estudante'))
-            ) {
-              colName = c;
-            } else if (
-              colClass === -1 &&
-              (cellNorm.includes('turma') || cellNorm.includes('serie') || cellNorm.includes('ano'))
-            ) {
-              colClass = c;
-            }
-          }
+  // Identificar linha do cabeçalho
+  let headerRowIndex = -1;
+  let colEnrollment = -1;
+  let colName = -1;
+  let colClass = -1;
 
-          if (colEnrollment !== -1 && colName !== -1 && colClass !== -1) {
-            headerRowIndex = r;
-            break;
-          }
-        }
+  const maxHeaderSearch = Math.min(targetSheet.rowCount, 10);
 
-        // Fallback para posições padrão 0, 1, 2 se cabeçalho não foi encontrado por texto
-        if (headerRowIndex === -1) {
-          headerRowIndex = 0;
-          colEnrollment = 0;
-          colName = 1;
-          colClass = 2;
-        }
+  for (let r = 1; r <= maxHeaderSearch; r++) {
+    const row = targetSheet.getRow(r);
+    if (!row || row.cellCount === 0) continue;
 
-        const rows: RawImportRow[] = [];
+    for (let c = 1; c <= Math.max(row.cellCount, 10); c++) {
+      const cellText = extractCellValueAsString(row.getCell(c)).toLowerCase();
+      const cellNorm = cellText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        for (let r = headerRowIndex + 1; r < rawGrid.length; r++) {
-          const row = rawGrid[r];
-          if (!Array.isArray(row)) continue;
-
-          const rawEnrollment = row[colEnrollment] !== undefined ? String(row[colEnrollment]).trim() : '';
-          const rawName = row[colName] !== undefined ? String(row[colName]).trim() : '';
-          const rawClass = row[colClass] !== undefined ? String(row[colClass]).trim() : '';
-
-          // Ignorar linhas totalmente em branco
-          if (!rawEnrollment && !rawName && !rawClass) {
-            continue;
-          }
-
-          rows.push({
-            rowIndex: r + 1, // 1-indexed para o usuário
-            enrollment: rawEnrollment,
-            name: rawName,
-            className: rawClass,
-          });
-        }
-
-        if (rows.length === 0) {
-          throw new Error('Nenhum registro de aluno foi encontrado na planilha.');
-        }
-
-        resolve(rows);
-      } catch (err: any) {
-        reject(new Error(err.message || 'Erro ao processar arquivo XLSX.'));
+      if (
+        colEnrollment === -1 &&
+        (cellNorm.includes('matricula') || cellNorm === 'mat' || cellNorm.includes('ra') || cellNorm === 'id')
+      ) {
+        colEnrollment = c;
+      } else if (
+        colName === -1 &&
+        (cellNorm.includes('nome') || cellNorm.includes('aluno') || cellNorm.includes('estudante'))
+      ) {
+        colName = c;
+      } else if (
+        colClass === -1 &&
+        (cellNorm.includes('turma') || cellNorm.includes('serie') || cellNorm.includes('ano'))
+      ) {
+        colClass = c;
       }
-    };
+    }
 
-    reader.onerror = () => {
-      reject(new Error('Erro ao ler o arquivo selecionado.'));
-    };
+    if (colEnrollment !== -1 && colName !== -1 && colClass !== -1) {
+      headerRowIndex = r;
+      break;
+    }
+  }
 
-    reader.readAsArrayBuffer(file);
-  });
+  // Fallback para posições padrão 1, 2, 3 (colunas A, B, C) se cabeçalho não foi encontrado por texto
+  if (headerRowIndex === -1) {
+    headerRowIndex = 1;
+    colEnrollment = 1;
+    colName = 2;
+    colClass = 3;
+  }
+
+  const rows: RawImportRow[] = [];
+
+  for (let r = headerRowIndex + 1; r <= targetSheet.rowCount; r++) {
+    const row = targetSheet.getRow(r);
+    if (!row) continue;
+
+    const rawEnrollment = extractCellValueAsString(row.getCell(colEnrollment));
+    const rawName = extractCellValueAsString(row.getCell(colName));
+    const rawClass = extractCellValueAsString(row.getCell(colClass));
+
+    // Ignorar linhas totalmente em branco
+    if (!rawEnrollment && !rawName && !rawClass) {
+      continue;
+    }
+
+    rows.push({
+      rowIndex: r, // 1-indexed para o usuário
+      enrollment: rawEnrollment,
+      name: rawName,
+      className: rawClass,
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error('Nenhum registro de aluno foi encontrado na planilha.');
+  }
+
+  return rows;
 }
 
 /**

@@ -163,8 +163,14 @@ export const BatchImportCollaboratorsModal: React.FC<BatchImportCollaboratorsMod
       return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) {
-      setParseError('Formato inválido. Por favor, envie exclusivamente arquivos no formato .XLSX ou .XLS');
+    const fileNameLower = file.name.toLowerCase();
+    if (fileNameLower.endsWith('.xls') && !fileNameLower.endsWith('.xlsx')) {
+      setParseError('Arquivos no formato legado .xls (Excel 97-2003) não são suportados por motivos de segurança. Por favor, abra a planilha no Excel/Google Planilhas e salve-a como Pasta de Trabalho do Excel (.xlsx).');
+      return;
+    }
+
+    if (!fileNameLower.endsWith('.xlsx')) {
+      setParseError('Formato de arquivo inválido. Por favor, envie exclusivamente arquivos no formato Excel moderno (.xlsx).');
       return;
     }
 
@@ -488,7 +494,7 @@ export const BatchImportCollaboratorsModal: React.FC<BatchImportCollaboratorsMod
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".xlsx, .xls"
+                  accept=".xlsx"
                   disabled={!selectedPeriod}
                   className="hidden"
                   onChange={(e) => {
@@ -517,7 +523,7 @@ export const BatchImportCollaboratorsModal: React.FC<BatchImportCollaboratorsMod
                 </h4>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                   {selectedPeriod
-                    ? `Formatos aceitos: .XLSX ou .XLS. Os dados serão conciliados para o período ${selectedPeriod}.`
+                    ? `Formato aceito: .XLSX (Excel). Os dados serão conciliados para o período ${selectedPeriod}.`
                     : 'A seleção do período letivo é obrigatória antes de importar a planilha.'}
                 </p>
               </div>
