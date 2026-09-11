@@ -573,10 +573,10 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
 
       <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden relative animate-in zoom-in-95 duration-150">
         {/* ================================================== */}
-        {/* CABEÇALHO DA FICHA DO ALUNO */}
+        {/* CABEÇALHO DA FICHA DO ALUNO / COLABORADOR */}
         {/* ================================================== */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 bg-white">
-          <div className="min-w-0">
+        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shrink-0 bg-white">
+          <div className="min-w-0 flex-1">
             {/* Linha 1: Nome em destaque + Botão de Copiar Nome + Badge indicativo do tipo */}
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <h2
@@ -615,7 +615,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
             </div>
 
             {/* Linha 2 (Metadados alinhados em barra horizontal limpa) */}
-            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 whitespace-nowrap">
+            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 whitespace-nowrap overflow-x-auto">
               <div className="flex items-center gap-1.5">
                 <IdCard className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span>{isCollaborator ? 'Código / Matrícula:' : 'Matrícula:'}</span>
@@ -630,17 +630,30 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Lado direito do cabeçalho: Botão de Ação Primária + Botão FECHAR Destacado */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap justify-end">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              icon={UserCheck}
+              onClick={handlePeriodActionClick}
+              className="text-xs font-semibold shadow-xs cursor-pointer"
+              title={isCollaborator ? 'Novo período' : 'Nova matrícula'}
+            >
+              {isCollaborator ? 'NOVO PERÍODO' : 'NOVA MATRÍCULA'}
+            </Button>
             <Button
               type="button"
               variant="secondary"
               size="sm"
               onClick={onClose}
               icon={X}
-              className="text-xs font-semibold cursor-pointer shrink-0"
-              title="Fechar (Esc)"
+              iconPosition="right"
+              className="text-xs font-semibold uppercase tracking-wider cursor-pointer shrink-0 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs"
+              title="Fechar janela (Esc)"
             >
-              Fechar
+              FECHAR
             </Button>
           </div>
         </div>
@@ -653,7 +666,7 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
           {/* MATRÍCULAS / PERÍODOS E HISTÓRICO (LINHA ÚNICA COMPACTA - ORDEM DESC) */}
           {/* ================================================== */}
           <section className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-0.5">
+            <div className="flex items-center justify-between gap-2.5 pb-0.5">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   {isCollaborator ? 'Períodos e histórico' : 'Matrículas e trajetória'}
@@ -661,25 +674,6 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                 <span className="text-[11px] text-slate-400 font-medium">
                   • {displayRecords.length} período{displayRecords.length === 1 ? '' : 's'} registrado{displayRecords.length === 1 ? '' : 's'}
                 </span>
-              </div>
-
-              {/* Status / Ação do Período: Botão permanente para matrícula ou registro de período */}
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  icon={UserCheck}
-                  onClick={handlePeriodActionClick}
-                  className="text-xs font-semibold shadow-xs cursor-pointer"
-                  title={
-                    isCollaborator
-                      ? 'Novo período'
-                      : 'Nova matrícula'
-                  }
-                >
-                  {isCollaborator ? 'NOVO PERÍODO' : 'NOVA MATRÍCULA'}
-                </Button>
               </div>
             </div>
 
