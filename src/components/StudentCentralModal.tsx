@@ -131,14 +131,6 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
     return getActiveAcademicYear(periods) || '';
   }, [periods]);
 
-  // Verifica se a pessoa já possui registro confirmado para o período letivo ativo
-  const isRegisteredInActivePeriod = useMemo(() => {
-    if (!currentAcademicPeriodName) return false;
-    return records.some(
-      (r) => r.studentId === student.id && String(r.year) === String(currentAcademicPeriodName)
-    );
-  }, [records, student.id, currentAcademicPeriodName]);
-
   // Trajetória Fotográfica e registros cronológicos (B.14)
   const trajectory = useMemo(() => {
     return getStudentHistoricalTrajectory(
@@ -255,65 +247,9 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   // ESTADOS E HANDLERS: CONFIRMAÇÃO DE MATRÍCULA / REGISTRO DE PERÍODO NA FICHA
   // ==================================================
   const [isConfirmEnrollmentModalOpen, setIsConfirmEnrollmentModalOpen] = useState(false);
-  const [isRegisteringCollaborator, setIsRegisteringCollaborator] = useState(false);
-  const [confirmPeriodError, setConfirmPeriodError] = useState<string>('');
-
-  useEffect(() => {
-    setConfirmPeriodError('');
-  }, [student.id]);
-
-  const handleRegisterCollaborator = async () => {
-    if (!currentAcademicPeriodName || isRegisteringCollaborator) return;
-    setConfirmPeriodError('');
-    setIsRegisteringCollaborator(true);
-    try {
-      if (onRegisterCollaboratorPeriod) {
-        await onRegisterCollaboratorPeriod({
-          studentId: student.id,
-          year: currentAcademicPeriodName,
-          photoUrl: '',
-          cropSettings: { x: 50, y: 50, zoom: 1.0 },
-        });
-      } else {
-        const res = await apiFetch('/api/records', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentId: student.id,
-            year: String(currentAcademicPeriodName),
-            className: '',
-            photoUrl: '',
-            cropSettings: { x: 50, y: 50, zoom: 1.0 },
-          }),
-        });
-        if (!res.ok) {
-          let errMessage = 'Erro ao registrar período do colaborador.';
-          try {
-            const err = await res.json();
-            if (err && (err.error || err.message)) {
-              errMessage = err.error || err.message;
-            }
-          } catch {}
-          throw new Error(errMessage);
-        }
-        await res.json();
-      }
-      setSuccessToast(`Período ${currentAcademicPeriodName} registrado com sucesso.`);
-    } catch (err: any) {
-      setConfirmPeriodError(err.message || 'Erro ao registrar período do colaborador.');
-    } finally {
-      setIsRegisteringCollaborator(false);
-    }
-  };
 
   const handlePeriodActionClick = () => {
-    if (!currentAcademicPeriodName) return;
-    setConfirmPeriodError('');
-    if (isCollaborator) {
-      handleRegisterCollaborator();
-    } else {
-      setIsConfirmEnrollmentModalOpen(true);
-    }
+    setIsConfirmEnrollmentModalOpen(true);
   };
 
   // ==================================================
@@ -727,64 +663,25 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                 </span>
               </div>
 
-              {/* Status / Ação do Período Acadêmico Ativo */}
+              {/* Status / Ação do Período: Botão permanente para matrícula ou registro de período */}
               <div className="flex items-center gap-2 shrink-0">
-                {!currentAcademicPeriodName ? (
-                  <div
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-medium"
-                    title="Nenhum período acadêmico ativo cadastrado no sistema"
-                  >
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>Nenhum período acadêmico ativo</span>
-                  </div>
-                ) : isRegisteredInActivePeriod ? (
-                  <div
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-lg text-xs font-semibold shadow-2xs"
-                    title={
-                      isCollaborator
-                        ? `Período ${currentAcademicPeriodName} já registrado`
-                        : `Matrícula do período ${currentAcademicPeriodName} já confirmada`
-                    }
-                  >
-                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
-                    <span>
-                      {isCollaborator
-                        ? `Período registrado — ${currentAcademicPeriodName}`
-                        : `Matrícula confirmada — ${currentAcademicPeriodName}`}
-                    </span>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    icon={UserCheck}
-                    isLoading={isRegisteringCollaborator}
-                    disabled={isRegisteringCollaborator}
-                    onClick={handlePeriodActionClick}
-                    className="text-xs font-semibold shadow-xs cursor-pointer"
-                    title={
-                      isCollaborator
-                        ? `Registrar período letivo ${currentAcademicPeriodName}`
-                        : `Confirmar matrícula no período letivo ${currentAcademicPeriodName}`
-                    }
-                  >
-                    {isCollaborator ? 'Registrar Período' : 'Confirmar Matrícula'}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  icon={UserCheck}
+                  onClick={handlePeriodActionClick}
+                  className="text-xs font-semibold shadow-xs cursor-pointer"
+                  title={
+                    isCollaborator
+                      ? 'Registrar período'
+                      : 'Confirmar matrícula'
+                  }
+                >
+                  {isCollaborator ? 'Registrar Período' : 'Confirmar Matrícula'}
+                </Button>
               </div>
             </div>
-
-            {/* Alerta de erro na confirmação ou registro do período */}
-            {confirmPeriodError && (
-              <Alert
-                variant="error"
-                onClose={() => setConfirmPeriodError('')}
-                className="text-xs py-2"
-              >
-                {confirmPeriodError}
-              </Alert>
-            )}
 
             {/* Input oculto para upload direto ao clicar no botão da linha */}
             <input
