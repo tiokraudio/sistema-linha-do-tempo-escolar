@@ -36,6 +36,8 @@ export interface ConfirmStudentEnrollmentModalProps {
   periods: AcademicPeriod[];
   timelines?: GeneratedTimeline[];
   classes?: ClassRecord[];
+  initialPeriod?: string;
+  zIndex?: number;
   onClose: () => void;
   onConfirmStudentPeriod: (payload: {
     year: string | number;
@@ -71,6 +73,8 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
   periods,
   timelines = [],
   classes = [],
+  initialPeriod,
+  zIndex,
   onClose,
   onConfirmStudentPeriod,
   onRegisterCollaboratorPeriod,
@@ -78,7 +82,7 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
   onUpdateRecordCrops,
   onSuccess,
 }) => {
-  const [confirmPeriod, setConfirmPeriod] = useState<string>('');
+  const [confirmPeriod, setConfirmPeriod] = useState<string>(initialPeriod || '');
   const [confirmClass, setConfirmClass] = useState<string>('');
   const [confirmPhotoUrl, setConfirmPhotoUrl] = useState<string>('');
   const [confirmErrorMsg, setConfirmErrorMsg] = useState<string>('');
@@ -186,14 +190,14 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
       setConfirmErrorMsg('');
       setConfirmSuccessMsg(null);
       setConfirmPhotoUrl('');
-      setConfirmPeriod('');
+      setConfirmPeriod(initialPeriod || '');
       setConfirmClass('');
       setConfirmedCurrentPage(1);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
-  }, [isOpen, student]);
+  }, [isOpen, student, initialPeriod]);
 
   // Dynamic pedagogical progression validation feedback (ignoring collaborators)
   const progressionFeedback = useMemo(() => {
@@ -395,7 +399,10 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
   if (!isOpen || !student) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+      style={zIndex ? { zIndex } : undefined}
+    >
       <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Header do Modal */}
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
@@ -772,7 +779,10 @@ export const ConfirmStudentEnrollmentModal: React.FC<ConfirmStudentEnrollmentMod
 
       {/* Modal de Confirmação de Exclusão de Matrícula / Período */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          style={zIndex ? { zIndex: zIndex + 10 } : undefined}
+        >
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">

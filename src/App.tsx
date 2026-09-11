@@ -1056,6 +1056,7 @@ function MainAppContent() {
             setActiveTab('confirm_period');
           }}
           onConfirmStudentPeriod={handleConfirmStudentPeriod}
+          onRegisterCollaboratorPeriod={handleRegisterCollaboratorPeriod}
           onUpdateRecordPhoto={handleUpdateRecordPhoto}
           onUpdateRecordCrops={handleUpdateRecordCrops}
           onDeleteRecord={handleDeleteRecord}

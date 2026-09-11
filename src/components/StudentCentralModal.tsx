@@ -24,6 +24,7 @@ import {
   Crop,
   Trash2,
   AlertCircle,
+  UserCheck,
 } from 'lucide-react';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
 import {
@@ -37,6 +38,7 @@ import { Badge } from './ui/Badge';
 import { Toast } from './ui/Toast';
 import { Alert } from './ui/Alert';
 import { AdjustPhotoModal } from './AdjustPhotoModal';
+import { ConfirmStudentEnrollmentModal } from './ConfirmStudentEnrollmentModal';
 import { getProtectedPhotoUrl } from '../utils/photoUrl';
 
 export interface StudentCentralModalProps {
@@ -56,6 +58,12 @@ export interface StudentCentralModalProps {
     enrollment: string;
     name?: string;
     className: string;
+    photoUrl?: string;
+    cropSettings?: CropSettings;
+  }) => Promise<any>;
+  onRegisterCollaboratorPeriod?: (payload: {
+    studentId: string;
+    year: string | number;
     photoUrl?: string;
     cropSettings?: CropSettings;
   }) => Promise<any>;
@@ -83,8 +91,10 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   timelines = [],
   periods = [],
   schoolConfig,
-  classes: _classes = [],
+  classes = [],
   onClose,
+  onConfirmStudentPeriod,
+  onRegisterCollaboratorPeriod,
   onUpdateRecordPhoto,
   onUpdateRecordCrops,
   onDeleteRecord,
@@ -120,6 +130,14 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
   const currentAcademicPeriodName = useMemo(() => {
     return getActiveAcademicYear(periods) || '';
   }, [periods]);
+
+  // Verifica se a pessoa já possui registro confirmado para o período letivo ativo
+  const isRegisteredInActivePeriod = useMemo(() => {
+    if (!currentAcademicPeriodName) return false;
+    return records.some(
+      (r) => r.studentId === student.id && String(r.year) === String(currentAcademicPeriodName)
+    );
+  }, [records, student.id, currentAcademicPeriodName]);
 
   // Trajetória Fotográfica e registros cronológicos (B.14)
   const trajectory = useMemo(() => {
@@ -230,6 +248,71 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
       }, 2000);
     } catch (err) {
       console.error('Falha ao copiar nome:', err);
+    }
+  };
+
+  // ==================================================
+  // ESTADOS E HANDLERS: CONFIRMAÇÃO DE MATRÍCULA / REGISTRO DE PERÍODO NA FICHA
+  // ==================================================
+  const [isConfirmEnrollmentModalOpen, setIsConfirmEnrollmentModalOpen] = useState(false);
+  const [isRegisteringCollaborator, setIsRegisteringCollaborator] = useState(false);
+  const [confirmPeriodError, setConfirmPeriodError] = useState<string>('');
+
+  useEffect(() => {
+    setConfirmPeriodError('');
+  }, [student.id]);
+
+  const handleRegisterCollaborator = async () => {
+    if (!currentAcademicPeriodName || isRegisteringCollaborator) return;
+    setConfirmPeriodError('');
+    setIsRegisteringCollaborator(true);
+    try {
+      if (onRegisterCollaboratorPeriod) {
+        await onRegisterCollaboratorPeriod({
+          studentId: student.id,
+          year: currentAcademicPeriodName,
+          photoUrl: '',
+          cropSettings: { x: 50, y: 50, zoom: 1.0 },
+        });
+      } else {
+        const res = await apiFetch('/api/records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: student.id,
+            year: String(currentAcademicPeriodName),
+            className: '',
+            photoUrl: '',
+            cropSettings: { x: 50, y: 50, zoom: 1.0 },
+          }),
+        });
+        if (!res.ok) {
+          let errMessage = 'Erro ao registrar período do colaborador.';
+          try {
+            const err = await res.json();
+            if (err && (err.error || err.message)) {
+              errMessage = err.error || err.message;
+            }
+          } catch {}
+          throw new Error(errMessage);
+        }
+        await res.json();
+      }
+      setSuccessToast(`Período ${currentAcademicPeriodName} registrado com sucesso.`);
+    } catch (err: any) {
+      setConfirmPeriodError(err.message || 'Erro ao registrar período do colaborador.');
+    } finally {
+      setIsRegisteringCollaborator(false);
+    }
+  };
+
+  const handlePeriodActionClick = () => {
+    if (!currentAcademicPeriodName) return;
+    setConfirmPeriodError('');
+    if (isCollaborator) {
+      handleRegisterCollaborator();
+    } else {
+      setIsConfirmEnrollmentModalOpen(true);
     }
   };
 
@@ -634,14 +717,74 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
           {/* MATRÍCULAS / PERÍODOS E HISTÓRICO (LINHA ÚNICA COMPACTA - ORDEM DESC) */}
           {/* ================================================== */}
           <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                {isCollaborator ? 'Períodos e histórico' : 'Matrículas e trajetória'}
-              </h3>
-              <span className="text-[11px] text-slate-400">
-                {displayRecords.length} período{displayRecords.length === 1 ? '' : 's'} registrado{displayRecords.length === 1 ? '' : 's'}
-              </span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-0.5">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  {isCollaborator ? 'Períodos e histórico' : 'Matrículas e trajetória'}
+                </h3>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  • {displayRecords.length} período{displayRecords.length === 1 ? '' : 's'} registrado{displayRecords.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {/* Status / Ação do Período Acadêmico Ativo */}
+              <div className="flex items-center gap-2 shrink-0">
+                {!currentAcademicPeriodName ? (
+                  <div
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-medium"
+                    title="Nenhum período acadêmico ativo cadastrado no sistema"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Nenhum período acadêmico ativo</span>
+                  </div>
+                ) : isRegisteredInActivePeriod ? (
+                  <div
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-lg text-xs font-semibold shadow-2xs"
+                    title={
+                      isCollaborator
+                        ? `Período ${currentAcademicPeriodName} já registrado`
+                        : `Matrícula do período ${currentAcademicPeriodName} já confirmada`
+                    }
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
+                    <span>
+                      {isCollaborator
+                        ? `Período registrado — ${currentAcademicPeriodName}`
+                        : `Matrícula confirmada — ${currentAcademicPeriodName}`}
+                    </span>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    icon={UserCheck}
+                    isLoading={isRegisteringCollaborator}
+                    disabled={isRegisteringCollaborator}
+                    onClick={handlePeriodActionClick}
+                    className="text-xs font-semibold shadow-xs cursor-pointer"
+                    title={
+                      isCollaborator
+                        ? `Registrar período letivo ${currentAcademicPeriodName}`
+                        : `Confirmar matrícula no período letivo ${currentAcademicPeriodName}`
+                    }
+                  >
+                    {isCollaborator ? 'Registrar Período' : 'Confirmar Matrícula'}
+                  </Button>
+                )}
+              </div>
             </div>
+
+            {/* Alerta de erro na confirmação ou registro do período */}
+            {confirmPeriodError && (
+              <Alert
+                variant="error"
+                onClose={() => setConfirmPeriodError('')}
+                className="text-xs py-2"
+              >
+                {confirmPeriodError}
+              </Alert>
+            )}
 
             {/* Input oculto para upload direto ao clicar no botão da linha */}
             <input
@@ -1272,6 +1415,51 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ================================================== */}
+        {/* MODAL REUTILIZÁVEL: CONFIRMAR MATRÍCULA DO ALUNO */}
+        {/* ================================================== */}
+        {isConfirmEnrollmentModalOpen && (
+          <ConfirmStudentEnrollmentModal
+            isOpen={isConfirmEnrollmentModalOpen}
+            student={student}
+            records={records}
+            periods={periods}
+            timelines={timelines}
+            classes={classes}
+            initialPeriod={currentAcademicPeriodName}
+            zIndex={60}
+            onClose={() => setIsConfirmEnrollmentModalOpen(false)}
+            onConfirmStudentPeriod={async (payload) => {
+              if (onConfirmStudentPeriod) {
+                return await onConfirmStudentPeriod(payload);
+              }
+              const res = await apiFetch('/api/confirm-period', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              if (!res.ok) {
+                let errMessage = 'Erro ao confirmar matrícula no período.';
+                try {
+                  const err = await res.json();
+                  if (err && (err.error || err.message)) {
+                    errMessage = err.error || err.message;
+                  }
+                } catch {}
+                throw new Error(errMessage);
+              }
+              return await res.json();
+            }}
+            onRegisterCollaboratorPeriod={onRegisterCollaboratorPeriod}
+            onDeleteRecord={onDeleteRecord}
+            onUpdateRecordCrops={onUpdateRecordCrops}
+            onSuccess={(msg) => {
+              setSuccessToast(msg);
+              setIsConfirmEnrollmentModalOpen(false);
+            }}
+          />
         )}
       </div>
     </div>
