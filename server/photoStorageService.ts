@@ -315,11 +315,11 @@ export function savePhotoFromBase64(
 }
 
 /**
- * Safely resolves and validates an image filename strictly inside data/uploads/photos/.
+ * Safely resolves and validates an image filename strictly inside the specified directory (defaults to PHOTOS_DIR).
  * Prevents any directory traversal (../, ..\, null bytes, encoded slashes, absolute paths).
- * Returns the absolute path string if safe and inside PHOTOS_DIR, or null otherwise.
+ * Returns the absolute path string if safe and strictly inside baseDir, or null otherwise.
  */
-export function getSafePhotoFilePath(filenameInput: unknown): string | null {
+export function getSafePhotoFilePath(filenameInput: unknown, baseDir: string = PHOTOS_DIR): string | null {
   if (!filenameInput || typeof filenameInput !== 'string') return null;
 
   let decoded = '';
@@ -338,6 +338,10 @@ export function getSafePhotoFilePath(filenameInput: unknown): string | null {
     decoded = decoded.slice('/api/photos/'.length);
   } else if (decoded.startsWith('api/photos/')) {
     decoded = decoded.slice('api/photos/'.length);
+  } else if (decoded.startsWith('/uploads/')) {
+    decoded = decoded.slice('/uploads/'.length);
+  } else if (decoded.startsWith('uploads/')) {
+    decoded = decoded.slice('uploads/'.length);
   }
 
   // Strip potential query strings or hashes
@@ -364,11 +368,11 @@ export function getSafePhotoFilePath(filenameInput: unknown): string | null {
     return null;
   }
 
-  const resolvedPhotosDir = path.resolve(PHOTOS_DIR);
-  const resolvedTarget = path.resolve(PHOTOS_DIR, baseName);
+  const resolvedBaseDir = path.resolve(baseDir);
+  const resolvedTarget = path.resolve(baseDir, baseName);
 
-  // Path containment check: target MUST start strictly with PHOTOS_DIR + separator
-  if (!resolvedTarget.startsWith(resolvedPhotosDir + path.sep)) {
+  // Path containment check: target MUST start strictly with baseDir + separator
+  if (!resolvedTarget.startsWith(resolvedBaseDir + path.sep)) {
     return null;
   }
 
@@ -376,24 +380,263 @@ export function getSafePhotoFilePath(filenameInput: unknown): string | null {
 }
 
 /**
- * Deletes a photo file from disk if it exists inside data/uploads/photos/.
+ * Normaliza qualquer URL ou referência para o nome de arquivo físico seguro no disco.
+ * Suporta referências como:
+ * - /uploads/photos/foto.jpg
+ * - uploads/photos/foto.jpg
+ * - /api/photos/foto.jpg
+ * - api/photos/foto.jpg
+ * - foto.jpg
+ * - referências com query params (?v=...) e hash anchors (#crop)
+ * Rejeita explicitamente traversals (../), Data URIs, paths absolutos e arquivos ocultos (.env).
  */
-export function deletePhotoFile(photoUrl: string | undefined | null): boolean {
-  if (!photoUrl || typeof photoUrl !== 'string') return false;
-  const trimmed = photoUrl.trim();
-  if (
-    !trimmed.startsWith('/uploads/photos/') &&
-    !trimmed.startsWith('uploads/photos/') &&
-    !trimmed.startsWith('/api/photos/') &&
-    !trimmed.startsWith('api/photos/')
-  ) {
-    return false;
+export function extractFilenameFromPhotoUrl(urlInput: unknown): string | null {
+  if (!urlInput || typeof urlInput !== 'string') return null;
+  const trimmed = urlInput.trim();
+  if (!trimmed) return null;
+
+  // Rejeita Data URIs ou Base64 brutos
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return null;
   }
 
-  const filename = path.basename(trimmed.split('?')[0].split('#')[0]);
-  if (!filename || filename === '.' || filename === '..') return false;
+  // Remove query string e hash anchor
+  const cleanUrl = trimmed.split('?')[0].split('#')[0].trim();
+  if (!cleanUrl) return null;
 
-  const targetPath = getSafePhotoFilePath(filename);
+  let decoded = cleanUrl;
+  try {
+    decoded = decodeURIComponent(cleanUrl);
+  } catch {
+    // Mantém cleanUrl caso decodeURIComponent falhe
+  }
+
+  // Remove prefixos conhecidos do sistema
+  if (decoded.startsWith('/uploads/photos/')) {
+    decoded = decoded.slice('/uploads/photos/'.length);
+  } else if (decoded.startsWith('uploads/photos/')) {
+    decoded = decoded.slice('uploads/photos/'.length);
+  } else if (decoded.startsWith('/api/photos/')) {
+    decoded = decoded.slice('/api/photos/'.length);
+  } else if (decoded.startsWith('api/photos/')) {
+    decoded = decoded.slice('api/photos/'.length);
+  } else if (decoded.startsWith('/uploads/')) {
+    decoded = decoded.slice('/uploads/'.length);
+  } else if (decoded.startsWith('uploads/')) {
+    decoded = decoded.slice('uploads/'.length);
+  }
+
+  // Prevenção estrita de Directory Traversal e caracteres maliciosos
+  if (
+    decoded.includes('..') ||
+    decoded.includes('/') ||
+    decoded.includes('\\') ||
+    decoded.includes('\0')
+  ) {
+    return null;
+  }
+
+  const baseName = path.basename(decoded);
+  if (!baseName || baseName === '.' || baseName === '..') {
+    return null;
+  }
+
+  // Formato estrito: alfanumérico, hífen, sublinhado e extensão válida com ponto
+  // Não pode iniciar com ponto (arquivos ocultos/de sistema)
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(baseName) || baseName.startsWith('.')) {
+    return null;
+  }
+
+  return baseName;
+}
+
+export interface ActivePhotoCollectionOptions {
+  extraProtectedUrls?: (string | null | undefined)[];
+  authFilePath?: string;
+  customPhotosDir?: string;
+}
+
+/**
+ * Coleta exaustivamente todos os nomes de arquivos físicos de fotos que continuam ativos
+ * e legitimamente referenciados em qualquer estrutura persistente do sistema:
+ * - records (photoUrl, carometroCrop.photoUrl, carometroCircularCrop.photoUrl, autoFaceCrop.photoUrl, etc.)
+ * - timelines (cada photoItem.photoUrl, fotos legadas, modelSnapshot imagens)
+ * - school_data (config.schoolLogo)
+ * - models (bgImageUrl, collaboratorBgImageUrl, primaryFrameUrl, secondaryFrameUrl, mainYearImageUrl)
+ * - auth.json (admin.avatarUrl)
+ * - URLs extras protegidas passadas explicitamente
+ */
+export function collectActivePhotoFilenames(
+  store: LocalStorageData,
+  options?: ActivePhotoCollectionOptions
+): Set<string> {
+  const activeFilenames = new Set<string>();
+
+  const registerCandidateUrl = (url?: unknown) => {
+    if (!url || typeof url !== 'string') return;
+    const filename = extractFilenameFromPhotoUrl(url);
+    if (filename) {
+      activeFilenames.add(filename);
+    }
+  };
+
+  if (!store) return activeFilenames;
+
+  // 1. Coleta em store.records (matrículas e ajustes de fotos/carômetro)
+  if (Array.isArray(store.records)) {
+    for (const rec of store.records) {
+      if (!rec) continue;
+      registerCandidateUrl(rec.photoUrl);
+      if (rec.carometroCrop) registerCandidateUrl(rec.carometroCrop.photoUrl);
+      if (rec.carometroCircularCrop) registerCandidateUrl(rec.carometroCircularCrop.photoUrl);
+      if (rec.autoFaceCrop) registerCandidateUrl(rec.autoFaceCrop.photoUrl);
+      if ((rec as any).cropSettings?.photoUrl) registerCandidateUrl((rec as any).cropSettings.photoUrl);
+      if ((rec as any).timelinePrimaryCrop?.photoUrl) registerCandidateUrl((rec as any).timelinePrimaryCrop.photoUrl);
+      if ((rec as any).timelineSecondaryCrop?.photoUrl) registerCandidateUrl((rec as any).timelineSecondaryCrop.photoUrl);
+    }
+  }
+
+  // 2. Coleta em store.timelines (produções da Linha do Tempo e snapshots de modelo)
+  if (Array.isArray(store.timelines)) {
+    for (const tl of store.timelines) {
+      if (!tl) continue;
+      const items = Array.isArray(tl.photoItems)
+        ? tl.photoItems
+        : Array.isArray((tl as any).photos)
+        ? (tl as any).photos
+        : [];
+      for (const p of items) {
+        if (p) registerCandidateUrl(p.photoUrl);
+      }
+      if (tl.modelSnapshot) {
+        registerCandidateUrl(tl.modelSnapshot.bgImageUrl);
+        registerCandidateUrl(tl.modelSnapshot.collaboratorBgImageUrl);
+        registerCandidateUrl(tl.modelSnapshot.primaryFrameUrl);
+        registerCandidateUrl(tl.modelSnapshot.secondaryFrameUrl);
+        registerCandidateUrl((tl.modelSnapshot as any).mainYearImageUrl);
+      }
+    }
+  }
+
+  // 3. Coleta em store.config (logotipo institucional da escola)
+  if (store.config?.schoolLogo) {
+    registerCandidateUrl(store.config.schoolLogo);
+  }
+
+  // 4. Coleta em store.models (modelos de layout)
+  if (Array.isArray(store.models)) {
+    for (const m of store.models) {
+      if (!m) continue;
+      registerCandidateUrl(m.bgImageUrl);
+      registerCandidateUrl(m.collaboratorBgImageUrl);
+      registerCandidateUrl(m.primaryFrameUrl);
+      registerCandidateUrl(m.secondaryFrameUrl);
+      registerCandidateUrl((m as any).mainYearImageUrl);
+    }
+  }
+
+  // 5. Coleta no auth.json (avatar do administrador do sistema)
+  try {
+    const authFile = options?.authFilePath || path.join(DATA_DIR, 'auth.json');
+    if (fs.existsSync(authFile)) {
+      const raw = fs.readFileSync(authFile, 'utf-8');
+      if (raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.admin?.avatarUrl) {
+          registerCandidateUrl(parsed.admin.avatarUrl);
+        }
+      }
+    }
+  } catch {
+    // Falha silenciosa de leitura de auth caso não exista ou esteja corrompido
+  }
+
+  // 6. URLs extras protegidas passadas pelo chamador
+  if (Array.isArray(options?.extraProtectedUrls)) {
+    for (const url of options.extraProtectedUrls) {
+      registerCandidateUrl(url);
+    }
+  }
+
+  return activeFilenames;
+}
+
+export interface SafePhotoDeletionResult {
+  deletedFilenames: string[];
+  preservedFilenames: string[];
+  skippedInvalidCount: number;
+}
+
+/**
+ * Executa a exclusão física estritamente baseada no estado FINAL do store após mutação.
+ * Para cada candidato a exclusão:
+ * 1. Normaliza para filename seguro;
+ * 2. Verifica se o filename ainda existe no conjunto de referências ativas sobreviventes;
+ * 3. Se existir em qualquer entidade sobrevivente (Record, Timeline, Carômetro, Logo, Model, Admin, etc.):
+ *    PRESERVA o arquivo e NÃO apaga.
+ * 4. Se não existir em nenhuma referência sobrevivente:
+ *    Apaga fisicamente o arquivo do disco.
+ */
+export function safeDeletePhotosAgainstSurvivingReferences(
+  candidateUrls: (string | undefined | null)[],
+  finalStore: LocalStorageData,
+  options?: ActivePhotoCollectionOptions & { targetPhotosDir?: string }
+): SafePhotoDeletionResult {
+  const result: SafePhotoDeletionResult = {
+    deletedFilenames: [],
+    preservedFilenames: [],
+    skippedInvalidCount: 0,
+  };
+
+  if (!Array.isArray(candidateUrls) || candidateUrls.length === 0) {
+    return result;
+  }
+
+  // 1. Coleta todas as referências ativas sobreviventes no estado FINAL
+  const survivingFilenames = collectActivePhotoFilenames(finalStore, options);
+
+  // 2. Normaliza candidatos únicos
+  const candidateFilenames = new Set<string>();
+  for (const url of candidateUrls) {
+    const fn = extractFilenameFromPhotoUrl(url);
+    if (fn) {
+      candidateFilenames.add(fn);
+    } else if (url && typeof url === 'string' && url.trim().length > 0) {
+      result.skippedInvalidCount++;
+    }
+  }
+
+  const baseDir = options?.targetPhotosDir || PHOTOS_DIR;
+
+  // 3. Avalia cada candidato contra as referências sobreviventes
+  for (const filename of candidateFilenames) {
+    if (survivingFilenames.has(filename)) {
+      // Arquivo ainda é referenciado por outra estrutura viva: PRESERVAR!
+      result.preservedFilenames.push(filename);
+    } else {
+      // Arquivo não possui mais nenhuma referência no sistema: EXCLUIR com segurança!
+      const deleted = deletePhotoFile(filename, baseDir);
+      if (deleted) {
+        result.deletedFilenames.push(filename);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Deletes a photo file from disk if it exists inside the specified baseDir (defaults to data/uploads/photos/).
+ */
+export function deletePhotoFile(
+  photoUrl: string | undefined | null,
+  baseDir: string = PHOTOS_DIR
+): boolean {
+  if (!photoUrl || typeof photoUrl !== 'string') return false;
+  const filename = extractFilenameFromPhotoUrl(photoUrl);
+  if (!filename) return false;
+
+  const targetPath = getSafePhotoFilePath(filename, baseDir);
   if (!targetPath) return false;
 
   if (fs.existsSync(targetPath)) {
@@ -412,11 +655,14 @@ export function deletePhotoFile(photoUrl: string | undefined | null): boolean {
  * Deletes a list of photo files from disk.
  * Returns the count of successfully deleted files.
  */
-export function deletePhotoFilesForUrls(urls: (string | undefined | null)[]): number {
+export function deletePhotoFilesForUrls(
+  urls: (string | undefined | null)[],
+  baseDir: string = PHOTOS_DIR
+): number {
   let count = 0;
   if (!Array.isArray(urls)) return 0;
   for (const url of urls) {
-    if (deletePhotoFile(url)) {
+    if (deletePhotoFile(url, baseDir)) {
       count++;
     }
   }
@@ -424,65 +670,27 @@ export function deletePhotoFilesForUrls(urls: (string | undefined | null)[]): nu
 }
 
 /**
- * Scans data/uploads/photos/ and deletes all physical photo files that are no longer
- * referenced in the store (records, timelines, school logo).
+ * Scans the photos directory and deletes all physical photo files that are truly orphan
+ * (no longer referenced in any persistent structure: records, timelines, school logo, models, or admin avatar).
  */
-export function cleanupOrphanPhotos(store: LocalStorageData): number {
-  if (!fs.existsSync(PHOTOS_DIR)) return 0;
+export function cleanupOrphanPhotos(
+  store: LocalStorageData,
+  options?: ActivePhotoCollectionOptions & { targetPhotosDir?: string }
+): number {
+  const baseDir = options?.targetPhotosDir || PHOTOS_DIR;
+  if (!fs.existsSync(baseDir)) return 0;
 
-  const activeFilenames = new Set<string>();
-
-  const registerUrl = (url?: string | null) => {
-    if (!url || typeof url !== 'string') return;
-    const trimmed = url.trim();
-    if (
-      trimmed.startsWith('/uploads/photos/') ||
-      trimmed.startsWith('uploads/photos/') ||
-      trimmed.startsWith('/api/photos/') ||
-      trimmed.startsWith('api/photos/')
-    ) {
-      const filename = path.basename(trimmed.split('?')[0].split('#')[0]);
-      if (filename && filename !== '.' && filename !== '..') {
-        activeFilenames.add(filename);
-      }
-    }
-  };
-
-  // 1. Collect from store.records
-  if (Array.isArray(store?.records)) {
-    for (const rec of store.records) {
-      registerUrl(rec.photoUrl);
-      registerUrl(rec.carometroCrop?.photoUrl);
-      registerUrl(rec.carometroCircularCrop?.photoUrl);
-      registerUrl(rec.autoFaceCrop?.photoUrl);
-    }
-  }
-
-  // 2. Collect from store.timelines
-  if (Array.isArray(store?.timelines)) {
-    for (const tl of store.timelines) {
-      const items = Array.isArray(tl.photoItems)
-        ? tl.photoItems
-        : Array.isArray((tl as any).photos)
-        ? (tl as any).photos
-        : [];
-      for (const p of items) {
-        registerUrl(p?.photoUrl);
-      }
-    }
-  }
-
-  // 3. Collect school logo
-  if (store?.config?.schoolLogo) {
-    registerUrl(store.config.schoolLogo);
-  }
+  const activeFilenames = collectActivePhotoFilenames(store, options);
 
   let deletedCount = 0;
   try {
-    const filesOnDisk = fs.readdirSync(PHOTOS_DIR);
+    const filesOnDisk = fs.readdirSync(baseDir);
     for (const file of filesOnDisk) {
-      const filePath = path.join(PHOTOS_DIR, file);
+      const filePath = path.join(baseDir, file);
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        // Ignora arquivos do sistema como .gitkeep ou ocultos
+        if (file.startsWith('.')) continue;
+
         if (!activeFilenames.has(file)) {
           try {
             fs.unlinkSync(filePath);

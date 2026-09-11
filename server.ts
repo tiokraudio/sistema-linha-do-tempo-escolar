@@ -38,6 +38,7 @@ import {
   migrateBase64PhotosInStore,
   deletePhotoFile,
   deletePhotoFilesForUrls,
+  safeDeletePhotosAgainstSurvivingReferences,
   cleanupOrphanPhotos,
   getSafePhotoFilePath,
   PHOTOS_DIR,
@@ -2988,6 +2989,22 @@ async function startServer() {
         }
       }
 
+      // 4b. PERÍODOS LETIVOS selecionados sem PRODUÇÕES DA LINHA DO TEMPO
+      // Verificar se existem composições da Linha do Tempo vinculadas aos períodos que seriam removidos
+      if (requestedCategories.includes('periods') && !requestedCategories.includes('timelines')) {
+        const periodNames = new Set((store.periods || []).map((p) => String(p.name).trim()));
+        const dependentTimelines = (store.timelines || []).filter((t) => {
+          if (t.year === undefined || t.year === null) return false;
+          const yrStr = String(t.year).trim();
+          return periodNames.has(yrStr);
+        });
+        if (dependentTimelines.length > 0) {
+          return res.status(400).json({
+            error: `Operação bloqueada por integridade: não é permitido excluir os Períodos Letivos selecionados porque existem ${dependentTimelines.length} composição(ões) da Linha do Tempo vinculadas a esses períodos. Selecione também a categoria "Produções da Linha do Tempo" ou cancele a operação.`,
+          });
+        }
+      }
+
       // 5. MODELOS DA LINHA DO TEMPO selecionados sem PRODUÇÕES DA LINHA DO TEMPO
       // Verificar se existem composições da Linha do Tempo vinculadas aos modelos que seriam removidos
       if (requestedCategories.includes('models') && !requestedCategories.includes('timelines')) {
@@ -3064,7 +3081,7 @@ async function startServer() {
       // Conta Admin em auth.json NUNCA é tocada
       // data/backups NUNCA é apagada
 
-      const photosToDeleteFromDisk: string[] = [];
+      const photoCandidates: string[] = [];
 
       // A. Alunos & Colaboradores
       if (requestedCategories.includes('students') && requestedCategories.includes('collaborators')) {
@@ -3078,10 +3095,10 @@ async function startServer() {
       // B. Matrículas / Registros
       if (requestedCategories.includes('records')) {
         for (const rec of store.records || []) {
-          if (rec.photoUrl) photosToDeleteFromDisk.push(rec.photoUrl);
-          if (rec.carometroCrop?.photoUrl) photosToDeleteFromDisk.push(rec.carometroCrop.photoUrl);
-          if (rec.carometroCircularCrop?.photoUrl) photosToDeleteFromDisk.push(rec.carometroCircularCrop.photoUrl);
-          if (rec.autoFaceCrop?.photoUrl) photosToDeleteFromDisk.push(rec.autoFaceCrop.photoUrl);
+          if (rec.photoUrl) photoCandidates.push(rec.photoUrl);
+          if (rec.carometroCrop?.photoUrl) photoCandidates.push(rec.carometroCrop.photoUrl);
+          if (rec.carometroCircularCrop?.photoUrl) photoCandidates.push(rec.carometroCircularCrop.photoUrl);
+          if (rec.autoFaceCrop?.photoUrl) photoCandidates.push(rec.autoFaceCrop.photoUrl);
         }
         store.records = [];
       }
@@ -3095,7 +3112,7 @@ async function startServer() {
             ? (tl as any).photos
             : [];
           for (const p of items) {
-            if (p?.photoUrl) photosToDeleteFromDisk.push(p.photoUrl);
+            if (p?.photoUrl) photoCandidates.push(p.photoUrl);
           }
         }
         store.timelines = [];
@@ -3105,12 +3122,20 @@ async function startServer() {
       if (requestedCategories.includes('photos') && !requestedCategories.includes('records')) {
         for (const rec of store.records || []) {
           if (rec.photoUrl) {
-            photosToDeleteFromDisk.push(rec.photoUrl);
+            photoCandidates.push(rec.photoUrl);
             rec.photoUrl = '';
           }
-          if (rec.carometroCrop?.photoUrl) photosToDeleteFromDisk.push(rec.carometroCrop.photoUrl);
-          if (rec.carometroCircularCrop?.photoUrl) photosToDeleteFromDisk.push(rec.carometroCircularCrop.photoUrl);
-          if (rec.autoFaceCrop?.photoUrl) photosToDeleteFromDisk.push(rec.autoFaceCrop.photoUrl);
+          if (rec.carometroCrop?.photoUrl) photoCandidates.push(rec.carometroCrop.photoUrl);
+          if (rec.carometroCircularCrop?.photoUrl) photoCandidates.push(rec.carometroCircularCrop.photoUrl);
+          if (rec.autoFaceCrop?.photoUrl) photoCandidates.push(rec.autoFaceCrop.photoUrl);
+
+          // Remover todos os enquadramentos da foto que foi removida para não deixar referências inconsistentes
+          delete rec.timelinePrimaryCrop;
+          delete rec.timelineSecondaryCrop;
+          delete rec.carometroCrop;
+          delete rec.carometroCircularCrop;
+          delete rec.autoFaceCrop;
+          delete rec.cropSettings;
         }
       }
 
@@ -3120,6 +3145,7 @@ async function startServer() {
           delete rec.timelinePrimaryCrop;
           delete rec.timelineSecondaryCrop;
           delete rec.carometroCrop;
+          delete rec.carometroCircularCrop;
           delete rec.autoFaceCrop;
           delete rec.cropSettings;
         }
@@ -3131,6 +3157,7 @@ async function startServer() {
         // F. Apenas ajustes do Carômetro (quando enquadramentos gerais NÃO foram selecionados)
         for (const rec of store.records || []) {
           delete rec.carometroCrop;
+          delete rec.carometroCircularCrop;
           delete rec.autoFaceCrop;
         }
       }
@@ -3148,7 +3175,7 @@ async function startServer() {
       // I. Dados da Escola
       if (requestedCategories.includes('school_data')) {
         if (store.config?.schoolLogo) {
-          photosToDeleteFromDisk.push(store.config.schoolLogo);
+          photoCandidates.push(store.config.schoolLogo);
         }
         store.config = {
           schoolName: '',
@@ -3164,13 +3191,17 @@ async function startServer() {
         store.models = [defaultModel];
       }
 
-      // Exclusão física das fotos identificadas no disco
-      if (photosToDeleteFromDisk.length > 0) {
-        deletePhotoFilesForUrls(photosToDeleteFromDisk);
-      }
+      // Exclusão física CIRÚRGICA e SEGURA baseada estritamente no estado FINAL resultante:
+      // Nenhum arquivo físico é apagado enquanto existir qualquer referência sobrevivente ativa
+      // em qualquer estrutura persistente (records, timelines, carômetro, logo, modelos ou avatar administrativo).
+      safeDeletePhotosAgainstSurvivingReferences(photoCandidates, store, {
+        extraProtectedUrls: [getAdminProfile()?.avatarUrl],
+      });
 
-      // Limpeza de fotos órfãs remanescentes em disco
-      cleanupOrphanPhotos(store);
+      // Limpeza complementar de arquivos de fotos verdadeiramente órfãos remanescentes no disco
+      cleanupOrphanPhotos(store, {
+        extraProtectedUrls: [getAdminProfile()?.avatarUrl],
+      });
 
       // 4. Salvar estado atualizado em disco
       saveData(store);
