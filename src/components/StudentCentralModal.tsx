@@ -674,11 +674,11 @@ export const StudentCentralModal: React.FC<StudentCentralModalProps> = ({
                   className="text-xs font-semibold shadow-xs cursor-pointer"
                   title={
                     isCollaborator
-                      ? 'Registrar período'
-                      : 'Confirmar matrícula'
+                      ? 'Novo período'
+                      : 'Nova matrícula'
                   }
                 >
-                  {isCollaborator ? 'Registrar Período' : 'Confirmar Matrícula'}
+                  {isCollaborator ? 'NOVO PERÍODO' : 'NOVA MATRÍCULA'}
                 </Button>
               </div>
             </div>
