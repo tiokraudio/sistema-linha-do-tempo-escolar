@@ -213,6 +213,71 @@ const filterOptionsWithoutEI4 = resolveCanonicalAvailableClasses(
 assert(filterOptionsWithoutEI4.length === 1, `Deveria gerar exatamente 1 opção mesmo sem cadastro. Obtido: ${filterOptionsWithoutEI4.length}`);
 assert(filterOptionsWithoutEI4[0] === 'EI | 4 ANOS', `Usa a primeira grafia limpa sem duplicar. Obtido: '${filterOptionsWithoutEI4[0]}'`);
 
+// TESTE 9: Comportamento representativo de ReviewSheetPrintModal
+console.log('\nTESTE 9: Comportamento representativo de ReviewSheetPrintModal');
+const reviewSheetSavedCompositions = [
+  { studentId: 'std_r1', studentName: 'ANA C.', latestClass: 'EI | 3 Anos', latestYear: '2026' },
+  { studentId: 'std_r2', studentName: 'BRUNO D.', latestClass: 'EI | 3 ANOS', latestYear: '2026' },
+  { studentId: 'std_r3', studentName: 'CLARA E.', latestClass: 'ei | 3 anos', latestYear: '2026' },
+  { studentId: 'std_r4', studentName: 'DANIEL F.', latestClass: 'EFAF | 6º ANO', latestYear: '2026' },
+  { studentId: 'std_r5', studentName: 'ELENA G.', latestClass: 'EFAF | 6º Ano', latestYear: '2026' },
+  { studentId: 'std_r6', studentName: 'FABIO H.', latestClass: 'Turma Histórica 2020', latestYear: '2026' },
+  { studentId: 'std_r7', studentName: 'GABRIELA I.', latestClass: '  TURMA HISTÓRICA 2020  ', latestYear: '2026' },
+  { studentId: 'std_r8', studentName: 'HEITOR J.', latestClass: '—', latestYear: '2026' },
+];
+
+// 1. Extração de turmas disponíveis para o dropdown do filtro (conforme ReviewSheetPrintModal)
+const rawReviewClasses = reviewSheetSavedCompositions
+  .map((i) => i.latestClass)
+  .filter((cls): cls is string => Boolean(cls) && cls !== '—');
+
+const reviewAvailableClasses = resolveCanonicalAvailableClasses(rawReviewClasses, registeredClasses)
+  .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+console.log('Turmas disponíveis no dropdown do ReviewSheetPrintModal:', reviewAvailableClasses);
+assert(reviewAvailableClasses.length === 3, `Deveria resultar em exatamente 3 turmas no filtro (EI 3, EFAF 6, Turma Histórica 2020). Obtido: ${reviewAvailableClasses.length}`);
+assert(reviewAvailableClasses.includes('EI | 3 Anos'), "Opções devem conter canônica 'EI | 3 Anos'");
+assert(reviewAvailableClasses.includes('EFAF | 6º Ano'), "Opções devem conter canônica 'EFAF | 6º Ano'");
+assert(reviewAvailableClasses.includes('Turma Histórica 2020'), "Opções devem conter turma histórica não cadastrada 'Turma Histórica 2020'");
+
+// 2. Filtragem pelo dropdown selecionando 'EI | 3 Anos' com comparação via normalizeClassNameKey
+const selectedReviewClass = 'EI | 3 Anos';
+const filteredForReview = reviewSheetSavedCompositions.filter(
+  (item) => normalizeClassNameKey(item.latestClass) === normalizeClassNameKey(selectedReviewClass)
+);
+console.log('Itens filtrados para EI | 3 Anos:', filteredForReview.map((i) => `${i.studentName} [${i.latestClass}]`));
+assert(filteredForReview.length === 3, `Deveria filtrar todos os 3 alunos de EI 3 Anos (Ana, Bruno, Clara). Obtido: ${filteredForReview.length}`);
+assert(filteredForReview.some((i) => i.studentId === 'std_r1'), 'Ana C. (EI | 3 Anos) deve estar presente');
+assert(filteredForReview.some((i) => i.studentId === 'std_r2'), 'Bruno D. (EI | 3 ANOS) deve estar presente');
+assert(filteredForReview.some((i) => i.studentId === 'std_r3'), 'Clara E. (ei | 3 anos) deve estar presente');
+
+// 3. Resolução do cabeçalho da página de impressão (pageClassLabel / currentSheetClassName)
+// Quando classFilter é 'all' e a folha contém alunos da mesma turma com capitalizações diferentes:
+const pageSliceUniformCasing = [
+  { latestClass: 'EI | 3 Anos' },
+  { latestClass: 'EI | 3 ANOS' },
+  { latestClass: 'ei | 3 anos' },
+];
+const canonicalPageClasses = resolveCanonicalAvailableClasses(
+  pageSliceUniformCasing.map((i) => i.latestClass).filter((c) => Boolean(c) && c !== '—'),
+  registeredClasses
+);
+const pageClassLabel = canonicalPageClasses.length === 1 ? canonicalPageClasses[0] : undefined;
+console.log('Label resolvido para página uniforme com variações de grafia:', pageClassLabel);
+assert(pageClassLabel === 'EI | 3 Anos', `Deveria unificar o label da folha para 'EI | 3 Anos'. Obtido: '${pageClassLabel}'`);
+
+// Quando a página contém turmas mistas (ex: EI 3 Anos e EFAF 6º Ano), o label da turma deve ser undefined
+const pageSliceMixed = [
+  { latestClass: 'EI | 3 Anos' },
+  { latestClass: 'EFAF | 6º Ano' },
+];
+const canonicalMixedPageClasses = resolveCanonicalAvailableClasses(
+  pageSliceMixed.map((i) => i.latestClass).filter((c) => Boolean(c) && c !== '—'),
+  registeredClasses
+);
+const pageClassLabelMixed = canonicalMixedPageClasses.length === 1 ? canonicalMixedPageClasses[0] : undefined;
+assert(pageClassLabelMixed === undefined, 'Página mista deve ter pageClassLabel como undefined');
+
 console.log('\n================================================================');
-console.log(' TODOS OS 8 TESTES DE RESOLUÇÃO DE TURMAS PASSARAM COM SUCESSO!');
+console.log(' TODOS OS 9 TESTES DE RESOLUÇÃO DE TURMAS PASSARAM COM SUCESSO!');
 console.log('================================================================\n');

@@ -1,7 +1,11 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { WorkQueueItem, SchoolConfig, LayoutModel } from '../types';
+import { WorkQueueItem, SchoolConfig, LayoutModel, ClassRecord } from '../types';
 import { hasSavedTimelineComposition } from '../utils/workQueue';
+import {
+  normalizeClassNameKey,
+  resolveCanonicalAvailableClasses,
+} from '../utils/pedagogicalStructure';
 import { A4TimelinePreview, TimelinePhotoItemForPreview } from './A4TimelinePreview';
 import { A4PrintHeader, A4PrintFooter } from './A4PrintHeaderFooter';
 import {
@@ -70,6 +74,7 @@ interface ReviewSheetPrintModalProps {
   isOpen: boolean;
   selectedItems: WorkQueueItem[];
   allWorkQueueItems: WorkQueueItem[];
+  classes?: ClassRecord[];
   schoolConfig: SchoolConfig;
   defaultModel?: LayoutModel | null;
   activePeriodFilter?: string;
@@ -296,6 +301,7 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
   isOpen,
   selectedItems,
   allWorkQueueItems,
+  classes = [],
   schoolConfig,
   defaultModel,
   activePeriodFilter,
@@ -344,22 +350,22 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const cancelRequestedRef = useRef<boolean>(false);
 
-  // Available classes for filter dropdown
+  // Available classes for filter dropdown (canonicalizadas e deduplicadas)
   const availableClasses = useMemo(() => {
-    const classesSet = new Set<string>();
-    savedCompositionsPool.forEach((item) => {
-      if (item.latestClass && item.latestClass !== '—') {
-        classesSet.add(item.latestClass);
-      }
-    });
-    return Array.from(classesSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [savedCompositionsPool]);
+    const rawClassNames = savedCompositionsPool
+      .map((item) => item.latestClass)
+      .filter((cls): cls is string => Boolean(cls) && cls !== '—');
+    const canonicalClasses = resolveCanonicalAvailableClasses(rawClassNames, classes);
+    return canonicalClasses.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [savedCompositionsPool, classes]);
 
-  // Filtered pool based on user search & class filter
+  // Filtered pool based on user search & class filter (comparação normalizada case-insensitive)
   const filteredSavedItems = useMemo(() => {
     return savedCompositionsPool.filter((item) => {
-      if (classFilter !== 'all' && item.latestClass !== classFilter) {
-        return false;
+      if (classFilter !== 'all') {
+        if (normalizeClassNameKey(item.latestClass) !== normalizeClassNameKey(classFilter)) {
+          return false;
+        }
       }
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase().trim();
@@ -494,15 +500,12 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
 
   const currentSheetClassName = useMemo(() => {
     if (classFilter !== 'all') return classFilter;
-    const classesOnPage = Array.from(
-      new Set(
-        activePageItems
-          .map((i) => i.latestClass)
-          .filter((c) => Boolean(c) && c !== '—')
-      )
-    );
-    return classesOnPage.length === 1 ? classesOnPage[0] : undefined;
-  }, [classFilter, activePageItems]);
+    const rawClassesOnPage = activePageItems
+      .map((i) => i.latestClass)
+      .filter((c): c is string => Boolean(c) && c !== '—');
+    const canonicalClassesOnPage = resolveCanonicalAvailableClasses(rawClassesOnPage, classes);
+    return canonicalClassesOnPage.length === 1 ? canonicalClassesOnPage[0] : undefined;
+  }, [classFilter, activePageItems, classes]);
 
   const layout = LAYOUT_CONFIGS[itemsPerPage];
 
@@ -897,15 +900,12 @@ export const ReviewSheetPrintModal: React.FC<ReviewSheetPrintModalProps> = ({
           if (classFilter !== 'all') {
             pageClassLabel = classFilter;
           } else {
-            const classesOnPage = Array.from(
-              new Set<string>(
-                pageSlice
-                  .map((i) => i.latestClass)
-                  .filter((c): c is string => Boolean(c) && c !== '—')
-              )
-            );
-            if (classesOnPage.length === 1) {
-              pageClassLabel = classesOnPage[0];
+            const rawClassesOnPage = pageSlice
+              .map((i) => i.latestClass)
+              .filter((c): c is string => Boolean(c) && c !== '—');
+            const canonicalClassesOnPage = resolveCanonicalAvailableClasses(rawClassesOnPage, classes);
+            if (canonicalClassesOnPage.length === 1) {
+              pageClassLabel = canonicalClassesOnPage[0];
             }
           }
 

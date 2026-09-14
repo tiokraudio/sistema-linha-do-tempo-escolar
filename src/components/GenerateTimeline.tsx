@@ -2017,6 +2017,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
               : workQueueData.filter((item) => hasSavedTimelineComposition(item))
           }
           allWorkQueueItems={workQueueData}
+          classes={classes}
           schoolConfig={schoolConfig}
           defaultModel={selectedModel}
           activePeriodFilter={activeTargetPeriod}
