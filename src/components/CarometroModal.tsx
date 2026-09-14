@@ -19,6 +19,7 @@ import {
   generateCarometroZip,
 } from '../utils/carometroUtils';
 import { getActiveAcademicPeriod, getActiveAcademicYear } from '../utils/academicYears';
+import { resolveCanonicalAvailableClasses, normalizeClassNameKey } from '../utils/pedagogicalStructure';
 import { CarometroCropperModal } from './CarometroCropperModal';
 import { CarometroA4Sheet } from './CarometroA4Sheet';
 import { autoDetectFaceCrop } from '../utils/faceDetector';
@@ -330,16 +331,12 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
     });
   }, [students, records, activeTargetPeriod, timelines, savedCrops, pendingAutoCrops, isHistorical, activeContext]);
 
-  // Derive distinct classes present in the current target period items
+  // Derive distinct classes present in the current target period items (canonicalizadas e deduplicadas)
   const availableClassesInPeriod = useMemo(() => {
-    const classSet = new Set<string>();
-    allPeriodItems.forEach((it) => {
-      if (it.className && it.className.trim() !== '') {
-        classSet.add(it.className.trim());
-      }
-    });
-    return Array.from(classSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [allPeriodItems]);
+    const rawClassNames = allPeriodItems.map((it) => it.className);
+    const canonicalClasses = resolveCanonicalAvailableClasses(rawClassNames, classes);
+    return canonicalClasses.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [allPeriodItems, classes]);
 
   const studentCount = useMemo(() => {
     if (!activeTargetPeriod) return 0;
@@ -370,8 +367,8 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
     return allPeriodItems.filter((item) => {
       // 1. Turma filter (apenas para alunos)
       if (activeContext !== 'collaborator' && classFilter !== 'all') {
-        const itemCls = (item.className || '').trim().toLowerCase();
-        const targetCls = classFilter.trim().toLowerCase();
+        const itemCls = normalizeClassNameKey(item.className);
+        const targetCls = normalizeClassNameKey(classFilter);
         if (itemCls !== targetCls) {
           return false;
         }
@@ -1081,7 +1078,7 @@ export const CarometroModal: React.FC<CarometroModalProps> = ({
                   Todas as turmas ({allPeriodItems.length} alunos)
                 </option>
                 {availableClassesInPeriod.map((clsName) => {
-                  const count = allPeriodItems.filter((i) => (i.className || '').trim().toLowerCase() === clsName.toLowerCase()).length;
+                  const count = allPeriodItems.filter((i) => normalizeClassNameKey(i.className) === normalizeClassNameKey(clsName)).length;
                   return (
                     <option key={clsName} value={clsName}>
                       {clsName} ({count})

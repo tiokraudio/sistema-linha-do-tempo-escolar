@@ -33,6 +33,8 @@ import {
   OFFICIAL_CLASSES,
   getPedagogicalPosition,
   mapLegacyClassToOfficial,
+  resolveCanonicalAvailableClasses,
+  normalizeClassNameKey,
 } from '../utils/pedagogicalStructure';
 import {
   buildWorkQueueData,
@@ -317,21 +319,17 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
     );
   }, [contextualStudents, records, timelines, maxSlots, periods, activeTargetPeriod]);
 
-  // Dynamic available classes for the active period (strictly derived from enrollment records of that year)
+  // Dynamic available classes for the active period (strictly derived from enrollment records of that year, canonicalizadas e deduplicadas)
   const availableClassesInPeriod = useMemo(() => {
-    const classSet = new Set<string>();
-    workQueueData.forEach((it) => {
-      if (it.latestClass && it.latestClass.trim() !== '' && it.latestClass !== '—') {
-        classSet.add(it.latestClass.trim());
-      }
-    });
-    return Array.from(classSet).sort((a, b) => {
+    const rawClassNames = workQueueData.map((it) => it.latestClass);
+    const canonicalClasses = resolveCanonicalAvailableClasses(rawClassNames, classes);
+    return canonicalClasses.sort((a, b) => {
       const posA = getPedagogicalPosition(a) ?? 999;
       const posB = getPedagogicalPosition(b) ?? 999;
       if (posA !== posB) return posA - posB;
       return a.localeCompare(b, 'pt-BR');
     });
-  }, [workQueueData]);
+  }, [workQueueData, classes]);
 
   // Reset class filter and selections when switching tabs or changing historical year or person type
   useEffect(() => {
@@ -394,7 +392,7 @@ export const GenerateTimeline: React.FC<GenerateTimelineProps> = ({
       // Class Filter
       let matchesClass = true;
       if (classFilter !== 'all') {
-        matchesClass = item.latestClass.trim().toLowerCase() === classFilter.trim().toLowerCase();
+        matchesClass = normalizeClassNameKey(item.latestClass) === normalizeClassNameKey(classFilter);
       }
 
       return matchesSearch && matchesStatus && matchesClass;

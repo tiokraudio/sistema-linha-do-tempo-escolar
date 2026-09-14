@@ -457,3 +457,52 @@ export function getStudentAllowedProgressionInfo(
     statusText,
   };
 }
+
+/**
+ * Normaliza o nome da turma para fins de chave de agrupamento/deduplicação.
+ * Utiliza trim().toLocaleLowerCase('pt-BR').
+ */
+export function normalizeClassNameKey(name: string): string {
+  return (name || '').trim().toLocaleLowerCase('pt-BR');
+}
+
+/**
+ * Resolve e deduplica uma lista de nomes brutos de turmas presentes em registros
+ * contra as turmas canônicas cadastradas em Configurações > Turmas (`classes`).
+ *
+ * Regras:
+ * - Deduplica turmas por chave normalizada (trim().toLocaleLowerCase('pt-BR')).
+ * - Quando houver correspondência com classes, usa como label o ClassRecord.name canônico cadastrado.
+ * - Caso não haja correspondência nas turmas cadastradas, preserva a primeira representação limpa (trimmed).
+ * - Não altera records, alunos, matrículas ou dados históricos.
+ */
+export function resolveCanonicalAvailableClasses(
+  rawClassNames: (string | undefined | null)[],
+  registeredClasses: ClassRecord[] = []
+): string[] {
+  const canonicalMap = new Map<string, string>();
+  for (const cls of registeredClasses) {
+    if (cls && cls.name && cls.name.trim() !== '') {
+      const key = normalizeClassNameKey(cls.name);
+      // Prioriza a primeira correspondência ou substitui por uma turma explicitamente ativa
+      if (!canonicalMap.has(key) || cls.active !== false) {
+        canonicalMap.set(key, cls.name.trim());
+      }
+    }
+  }
+
+  const resolvedMap = new Map<string, string>();
+  for (const raw of rawClassNames) {
+    if (!raw || typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (trimmed === '' || trimmed === '—') continue;
+    const key = normalizeClassNameKey(trimmed);
+
+    if (!resolvedMap.has(key)) {
+      const canonicalLabel = canonicalMap.get(key) || trimmed;
+      resolvedMap.set(key, canonicalLabel);
+    }
+  }
+
+  return Array.from(resolvedMap.values());
+}
